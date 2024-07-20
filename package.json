@@ -20,7 +20,7 @@
     "test:browser": "cypress run",
     "test": "yarn test:node --detectOpenHandles && yarn test:browser",
     "lint": "tsc --noEmit",
-    "build": "del dist && rollup -c"
+    "build": "rimraf dist && rollup -c"
   },
   "author": "Vincent Thibault <vthibault.mobile@gmail.com>",
   "license": "MIT",
@@ -66,5 +66,6 @@
     "collectCoverage": true,
     "coverageDirectory": "coverage",
     "testEnvironment": "node"
-  }
+  },
+  "format": "prettier --write 'src/**/*.ts'"
 }
