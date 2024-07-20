@@ -1,6 +1,9 @@
 {
-  "name": "grf-loader",
-  "version": "1.0.0",
+  "name": "@chicowall/grf-loader",
+  "publishConfig": {
+    "access": "public"
+  },
+  "version": "1.0.1",
   "description": "A loader for GRF files (Ragnarok Online game file)",
   "main": "./dist/cjs/grf-loader.js",
   "module": "./dist/esm/grf-loader.js",
@@ -22,9 +25,9 @@
   "author": "Vincent Thibault <vthibault.mobile@gmail.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/vthibault/grf-loader/issues"
+    "url": "https://github.com/FranciscoWallison/grf-loader"
   },
-  "repository": "github:vthibault/grf-loader",
+  "repository": "github:FranciscoWallison/grf-loader",
   "keywords": [
     "grf-loader",
     "grf-parser",
