@@ -11,3 +11,6 @@ cache
 .tags_swap
 .tags
 report.*.json
+package-lock.json
+yarn.lock
+/.yarn

@@ -13,7 +13,7 @@ const cjs = [
   {
     input: 'index.ts',
     output: {
-      file: `dist/cjs/${name}.js`,
+      file: `dist/cjs/grf-loader.js`,
       sourcemap: true,
       format: 'cjs',
       esModule: false
@@ -24,7 +24,7 @@ const cjs = [
   {
     input: 'index.ts',
     output: {
-      file: `dist/cjs/${name}.min.js`,
+      file: `dist/cjs/grf-loader.min.js`,
       sourcemap: true,
       format: 'cjs'
     },
@@ -44,7 +44,7 @@ const cjs = [
 const esm = [
   {
     input: 'index.ts',
-    output: {file: `dist/esm/${name}.js`, sourcemap: true, format: 'esm'},
+    output: {file: `dist/esm/grf-loader.js`, sourcemap: true, format: 'esm'},
     external,
     plugins: [typescript()]
   }
@@ -54,7 +54,7 @@ const umd = [
   {
     input: 'index.ts',
     output: {
-      file: `dist/umd/${name}.js`,
+      file: `dist/umd/grf-loader.js`,
       sourcemap: true,
       format: 'umd',
       name: 'GrfLoader',
@@ -66,7 +66,7 @@ const umd = [
   {
     input: 'index.ts',
     output: {
-      file: `dist/umd/${name}.min.js`,
+      file: `dist/umd/grf-loader.min.js`,
       sourcemap: true,
       format: 'umd',
       name: 'GrfLoader',

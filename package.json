@@ -3,7 +3,7 @@
   "publishConfig": {
     "access": "public"
   },
-  "version": "1.0.1",
+  "version": "1.0.4",
   "description": "A loader for GRF files (Ragnarok Online game file)",
   "main": "./dist/cjs/grf-loader.js",
   "module": "./dist/esm/grf-loader.js",
@@ -20,7 +20,7 @@
     "test:browser": "cypress run",
     "test": "yarn test:node --detectOpenHandles && yarn test:browser",
     "lint": "tsc --noEmit",
-    "build": "rimraf dist && rollup -c"
+    "build": "del dist && rollup -c"
   },
   "author": "Vincent Thibault <vthibault.mobile@gmail.com>",
   "license": "MIT",
