@@ -16,7 +16,7 @@
 ## Installation
 
 ```
-npm install grf-loader
+npm install @chicowall/grf-loader
 ```
 
 ## Basic usage
