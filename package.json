@@ -1,6 +1,6 @@
 {
   "name": "grf-loader",
-  "version": "0.0.2",
+  "version": "1.0.0",
   "description": "A loader for GRF files (Ragnarok Online game file)",
   "main": "./dist/cjs/grf-loader.js",
   "module": "./dist/esm/grf-loader.js",
@@ -15,7 +15,7 @@
   "scripts": {
     "test:node": "jest",
     "test:browser": "cypress run",
-    "test": "yarn test:node && yarn test:browser",
+    "test": "yarn test:node --detectOpenHandles && yarn test:browser",
     "lint": "tsc --noEmit",
     "build": "del dist && rollup -c"
   },

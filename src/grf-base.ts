@@ -104,7 +104,7 @@ export abstract class GrfBase<T> {
         lengthAligned: data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24),
         realSize: data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24),
         type: data[p++],
-        offset: data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24)
+        offset: (data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24)) >>> 0
       };
 
       // Not a file (folder ?)
