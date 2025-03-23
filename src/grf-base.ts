@@ -109,7 +109,7 @@ export abstract class GrfBase<T> {
 
       // Not a file (folder ?)
       if (entry.type & FILELIST_TYPE_FILE) {
-        this.files.set(filename.toLowerCase(), entry);
+        this.files.set(filename, entry);
       }
     }
   }
@@ -140,7 +140,7 @@ export abstract class GrfBase<T> {
       return Promise.resolve({data: null, error: 'GRF not loaded yet'});
     }
 
-    const path = filename.toLowerCase();
+    const path = filename;
 
     // Not exists
     if (!this.files.has(path)) {
