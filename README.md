@@ -72,3 +72,14 @@ const {data, error} = await grf.getFile('data\\clientinfo.xml');
 const content = String.fromCharCode.apply(null, data);
 console.log(content);
 ```
+
+### Extract all files
+
+A sample script is provided in `examples/extract-all.ts` to dump every file from a GRF.
+Run it with [ts-node](https://typestrong.org/ts-node/) passing the GRF path and an optional output directory:
+
+```bash
+npx ts-node examples/extract-all.ts path/to/data.grf output-directory
+```
+
+All files will be written under `output-directory` (defaults to `output`).
