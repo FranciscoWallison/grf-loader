@@ -2,12 +2,12 @@ name: release
 
 on:
   push:
-    branches: [main]          # CI normal
+    branches: [main]
   pull_request:
-  workflow_dispatch:          # gatilho manual opcional
+  workflow_dispatch:
 
 jobs:
-  # ───── LINT ────────────────────────────────────────────────────────────
+  # ───── LINT ────────────────────────────────────────
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -19,34 +19,52 @@ jobs:
       - run: yarn --frozen-lockfile
       - run: yarn lint
 
-  # ───── TESTES NODE ─────────────────────────────────────────────────────
+  # ───── TESTES NODE ────────────────────────────────
   test-node:
     runs-on: ubuntu-latest
     needs: lint
-    steps: *setup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn --frozen-lockfile
       - run: yarn test:node
 
-  # ───── TESTES BROWSER ──────────────────────────────────────────────────
+  # ───── TESTES BROWSER ─────────────────────────────
   test-browser:
     runs-on: ubuntu-latest
     needs: test-node
-    steps: *setup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn --frozen-lockfile
       - run: yarn test:browser
 
-  # ───── BUILD ───────────────────────────────────────────────────────────
+  # ───── BUILD ──────────────────────────────────────
   build:
     runs-on: ubuntu-latest
     needs: [test-node, test-browser]
-    steps: *setup
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - run: yarn --frozen-lockfile
       - run: yarn build
       - uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
 
-  # ───── RELEASE (bump + tag + publish) ──────────────────────────────────
+  # ───── RELEASE (bump + tag + publish) ─────────────
   release:
-    if: github.ref == 'refs/heads/main'   # só branch main
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     needs: build
     permissions:
@@ -62,11 +80,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          registry-url: https://registry.npmjs.org
+          registry-url: 'https://registry.npmjs.org'
           cache: yarn
 
       - run: yarn --frozen-lockfile
-      - run: yarn build                 # tsup -> dist/
+      - run: yarn build          # tsup -> dist/
 
       # 3. Corrige package.json (se necessário)
       - run: npm pkg fix
@@ -81,7 +99,7 @@ jobs:
             echo "Nada para commitar"
           fi
 
-      # 5. Bump de versão + tag
+      # 5. Bump versão + tag
       - name: Bump version & tag
         run: |
           git config user.name  "github-actions[bot]"
