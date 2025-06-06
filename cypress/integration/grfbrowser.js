@@ -18,7 +18,7 @@ const getGrfBlob = (name: string) =>
 
 describe('GRFBrowser', () => {
   it('Should not load corrupted file', async () => {
-    const buffer = await getGrfBlob('corrupted.grf');
+    const blob = await getGrfBlob('corrupted.grf');
     let error = '';
     try {
       const grf = new GrfBrowser(blob);
