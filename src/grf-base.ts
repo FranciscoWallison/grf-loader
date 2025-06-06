@@ -149,6 +149,10 @@ export abstract class GrfBase<T> {
 
     const entry = this.files.get(path);
 
+    if (!entry) {
+      return { data: null, error: `File "${path}" not found` };
+    }
+
     const data = await this.getStreamBuffer(
       this.fd,
       entry.offset + HEADER_SIZE,
