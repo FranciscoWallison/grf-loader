@@ -76,7 +76,13 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT }}
 
-      # 2. Node + cache
+      # 2. Configura identidade do bot ANTES de qualquer commit
+      - name: Configure git user
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      # 3. Node + cache
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -86,10 +92,10 @@ jobs:
       - run: yarn --frozen-lockfile
       - run: yarn build          # tsup -> dist/
 
-      # 3. Corrige package.json (se necessário)
+      # 4. Corrige package.json (se necessário)
       - run: npm pkg fix
 
-      # 4. Comita mudanças se houver
+      # 5. Comita mudanças se houver
       - name: Commit artefacts
         run: |
           git add -A
@@ -99,7 +105,7 @@ jobs:
             echo "Nada para commitar"
           fi
 
-      # 5. Bump versão + tag
+      # 6. Bump versão + tag
       - name: Bump version & tag
         run: |
           git config user.name  "github-actions[bot]"
@@ -107,7 +113,7 @@ jobs:
           npm version patch -m "chore(release): %s [skip ci]"
           git push --follow-tags
 
-      # 6. Publica no npm
+      # 7. Publica no npm
       - name: Publish to npm
         run: npm publish --access public --provenance
         env:
