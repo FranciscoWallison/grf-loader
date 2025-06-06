@@ -30,7 +30,7 @@ npm install @chicowall/grf-loader
 
 ```ts
 import {GrfNode} from 'grf-loader';
-import {openSync} from 'path';
+import {openSync} from 'fs';
 
 const fd = openSync('path/to/data.grf', 'r');
 const grf = new GrfNode(fd);
