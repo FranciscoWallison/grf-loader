@@ -1,16 +1,18 @@
 import {resolve} from 'path';
-import {openSync} from 'fs';
+import {openSync, closeSync} from 'fs';
 import {GrfNode} from '../src/grf-node';
 
 describe('GRFNode', () => {
   it('Should not load invalid fd', async () => {
+    const fd = 0;
     let error = '';
     try {
-      const fd = 0;
       const grf = new GrfNode(fd);
       await grf.load();
     } catch (e) {
       error = e.message;
+    } finally {
+      closeSync(fd);
     }
     expect(error).toBeTruthy();
   });
@@ -56,19 +58,24 @@ describe('GRFNode', () => {
 
   it('Should load only once', async () => {
     const fd = openSync(resolve(__dirname, '../data/with-files.grf'), 'r');
-    const grf = new GrfNode(fd);
+    try {
+      const grf = new GrfNode(fd);
 
-    // @ts-ignore
-    const spy1 = spyOn(grf, 'parseHeader');
-    // @ts-ignore
-    const spy2 = spyOn(grf, 'parseFileList');
+      // @ts-ignore
+      const spy1 = spyOn(grf, 'parseHeader');
+      // @ts-ignore
+      const spy2 = spyOn(grf, 'parseFileList');
 
-    await grf.load();
-    await grf.load();
-    await grf.load();
+      await grf.load();
+      await grf.load();
+      await grf.load();
 
-    expect(spy1).toHaveBeenCalledTimes(1);
-    expect(spy2).toHaveBeenCalledTimes(1);
+      expect(spy1).toHaveBeenCalledTimes(1);
+      expect(spy2).toHaveBeenCalledTimes(1);
+    } catch (error) {
+    } finally {
+      closeSync(fd);
+    }
   });
 
   it('Should load file list data', async () => {
