@@ -162,8 +162,10 @@ export abstract class GrfBase<T> {
     try {
       const result = this.decodeEntry(data, entry);
       return Promise.resolve({data: result, error: null});
-    } catch (error) {
-      return Promise.resolve({data: null, error: error});
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error ? error.message : String(error);
+      return { data: null, error: message };
     }
   }
 }
