@@ -13,5 +13,5 @@
     "declaration": true,
     "declarationMap": true
   },
-  "include": ["src/**/*.ts", "examples/**/*.ts"]
+  "include": ["src/**/*.ts", "examples/**/*.ts", "index.ts"]
 }
