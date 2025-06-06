@@ -6,14 +6,17 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          fetch-depth: 1
+          node-version: 20        # ou a versão que o seu projeto exige
+          cache: 'yarn'           # cache automático do ~/.cache/yarn
 
       - name: Install dependencies
-        run: yarn --frozen-lockfile
+        run: yarn --frozen-lockfile   # ou `yarn install --immutable` se usar Yarn 3+
 
       - name: Run node tests
         run: yarn test:node
