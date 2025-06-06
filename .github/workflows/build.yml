@@ -74,7 +74,7 @@ jobs:
           registry-url: 'https://registry.npmjs.org'
           cache: yarn
       - run: yarn --frozen-lockfile
-      - run: yarn build                       # (re)gera dist – rápido com tsup
+      - run: yarn build
       - name: Fix package.json (repository URL etc.)
         run: npm pkg fix
       - name: Publish to npm
