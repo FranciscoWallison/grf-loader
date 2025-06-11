@@ -14,7 +14,7 @@
       "import": "./dist/index.js"
     }
   },
-  "types": "./dist/types/index.d.ts",
+  "types": "./dist/index.d.ts",
   "sideEffects": false,
   "browser": {
     "./dist/cjs/grf-loader.cjs": "./dist/umd/grf-loader.js"
