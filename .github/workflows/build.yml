@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  # ───── LINT ────────────────────────────────────────
+# ───── LINT ────────────────────────────────────────
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -19,36 +19,9 @@ jobs:
       - run: yarn --frozen-lockfile
       - run: yarn lint
 
-  # ───── TESTES NODE ────────────────────────────────
-  test-node:
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: yarn
-      - run: yarn --frozen-lockfile
-      - run: yarn test:node
-
-  # ───── TESTES BROWSER ─────────────────────────────
-  test-browser:
-    runs-on: ubuntu-latest
-    needs: test-node
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: yarn
-      - run: yarn --frozen-lockfile
-      - run: yarn test:browser
-
-  # ───── BUILD ──────────────────────────────────────
+# ───── BUILD ──────────────────────────────────────
   build:
     runs-on: ubuntu-latest
-    needs: [test-node, test-browser]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -56,46 +29,83 @@ jobs:
           node-version: 20
           cache: yarn
       - run: yarn --frozen-lockfile
-      - run: yarn build
+      - run: yarn build                      # gera dist/index.js e dist/index.cjs
       - uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
+          path: dist/                        # empacota apenas a pasta dist
 
-  # ───── RELEASE (bump + tag + publish) ─────────────
+# ───── TESTES NODE ────────────────────────────────
+  test-node:
+    runs-on: ubuntu-latest
+    needs: [lint, build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - uses: actions/download-artifact@v4   # extrai dist/ na raiz
+        with:
+          name: dist
+          path: .
+      - run: |
+          echo "::group::dist tree"
+          ls -R dist | head -20
+          echo "::endgroup::"
+      - run: yarn --frozen-lockfile
+      - run: yarn test:node
+
+# ───── TESTES BROWSER ─────────────────────────────
+  test-browser:
+    runs-on: ubuntu-latest
+    needs: test-node                       # já garante lint + build
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: yarn
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: .
+      - run: yarn --frozen-lockfile
+      - run: yarn test:browser
+
+# ───── RELEASE (bump + tag + publish) ─────────────
   release:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    needs: build
+    needs: build                            # só precisa do build
     permissions:
       contents: write
       id-token: write
     steps:
-      # 1. Clona com token de escrita
       - uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
 
-      # 2. Configura identidade do bot ANTES de qualquer commit
       - name: Configure git user
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      # 3. Node + cache
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           registry-url: 'https://registry.npmjs.org'
           cache: yarn
 
-      - run: yarn --frozen-lockfile
-      - run: yarn build          # tsup -> dist/
+      # ↓ Baixa o dist já compilado para não gastar tempo
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: .
 
-      # 4. Corrige package.json (se necessário)
+      - run: yarn --frozen-lockfile
       - run: npm pkg fix
 
-      # 5. Comita mudanças se houver
       - name: Commit artefacts
         run: |
           git add -A
@@ -105,15 +115,11 @@ jobs:
             echo "Nada para commitar"
           fi
 
-      # 6. Bump versão + tag
       - name: Bump version & tag
         run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           npm version patch -m "chore(release): %s [skip ci]"
           git push --follow-tags
 
-      # 7. Publica no npm
       - name: Publish to npm
         run: npm publish --access public --provenance
         env:
