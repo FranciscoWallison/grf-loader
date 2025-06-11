@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig([
   {
-    entry: ['src/index.ts'],
+    entry: { 'grf-loader': 'src/index.ts' },
     format: ['esm'],
     dts: {
       entry: 'src/index.ts',
@@ -14,7 +14,7 @@ export default defineConfig([
     clean: true
   },
   {
-    entry: ['src/index.ts'],
+    entry: { 'grf-loader': 'src/index.ts' },
     format: ['cjs'],
     outDir: 'dist/cjs',
     sourcemap: true,
@@ -23,7 +23,7 @@ export default defineConfig([
     outExtension: () => ({ js: '.cjs' })
   },
   {
-    entry: ['src/index.ts'],
+    entry: { 'grf-loader': 'src/index.ts' },
     format: ['iife'],
     globalName: 'GrfLoader',
     outDir: 'dist/umd',
