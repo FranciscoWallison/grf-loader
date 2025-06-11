@@ -6,11 +6,13 @@
   "type": "module",
   "version": "1.0.6",
   "description": "A loader for GRF files (Ragnarok Online game file)",
-  "main": "./dist/cjs/grf-loader.cjs",
-  "module": "./dist/esm/grf-loader.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "exports": {
-    "import": "./dist/esm/grf-loader.js",
-    "require": "./dist/cjs/grf-loader.cjs"
+    ".": {
+      "require": "./dist/index.cjs",
+      "import": "./dist/index.js"
+    }
   },
   "types": "./dist/types/index.d.ts",
   "sideEffects": false,
