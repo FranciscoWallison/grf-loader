@@ -22,7 +22,7 @@ jobs:
   # ───── TESTES NODE ────────────────────────────────
   test-node:
     runs-on: ubuntu-latest
-    needs: lint
+    needs: [lint, build]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -35,7 +35,7 @@ jobs:
   # ───── TESTES BROWSER ─────────────────────────────
   test-browser:
     runs-on: ubuntu-latest
-    needs: test-node
+    needs: [lint, build, test-node]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,7 +48,6 @@ jobs:
   # ───── BUILD ──────────────────────────────────────
   build:
     runs-on: ubuntu-latest
-    needs: [test-node, test-browser]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
