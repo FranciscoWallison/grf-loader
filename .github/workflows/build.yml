@@ -29,6 +29,10 @@ jobs:
         with:
           node-version: 20
           cache: yarn
+      - uses: actions/download-artifact@v4   # <─ traz o dist/
+        with:
+          name: dist
+          path: dist
       - run: yarn --frozen-lockfile
       - run: yarn test:node
 
