@@ -29,7 +29,11 @@ jobs:
         with:
           node-version: 20
           cache: yarn
-      - uses: actions/download-artifact@v4   # <─ traz o dist/
+      - uses: actions/download-artifact@v4
+      - run: |
+          echo "::group::dist listing"
+          ls -R dist | head -20
+          echo "::endgroup::"
         with:
           name: dist
       - run: yarn --frozen-lockfile
