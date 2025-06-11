@@ -30,10 +30,6 @@ jobs:
           node-version: 20
           cache: yarn
       - uses: actions/download-artifact@v4
-      - run: |
-          echo "::group::dist listing"
-          ls -R dist | head -20
-          echo "::endgroup::"
         with:
           name: dist
       - run: yarn --frozen-lockfile
@@ -70,7 +66,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: dist
-          path: dist/
 
   # ───── RELEASE (bump + tag + publish) ─────────────
   release:
