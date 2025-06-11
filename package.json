@@ -6,11 +6,16 @@
   "type": "module",
   "version": "1.0.6",
   "description": "A loader for GRF files (Ragnarok Online game file)",
-  "main": "./dist/cjs/grf-loader.js",
+  "main": "./dist/cjs/grf-loader.cjs",
   "module": "./dist/esm/grf-loader.js",
+  "exports": {
+    "import": "./dist/esm/grf-loader.js",
+    "require": "./dist/cjs/grf-loader.cjs"
+  },
+  "types": "./dist/types/index.d.ts",
   "sideEffects": false,
   "browser": {
-    "./dist/cjs/grf-loader.js": "./dist/umd/grf-loader.js"
+    "./dist/cjs/grf-loader.cjs": "./dist/umd/grf-loader.js"
   },
   "files": [
     "dist/",
@@ -21,8 +26,8 @@
     "test:browser": "cypress run",
     "test": "yarn test:node --detectOpenHandles && yarn test:browser",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "build": "tsup src/index.ts --dts --format cjs,esm,iife --globalName GrfLoader --sourcemap --minify --clean",
-    "all_config": "yarn lint &&  yarn test:node && yarn test:browser && yarn build"
+    "build": "tsup",
+    "all_config": "yarn lint && yarn test:node && yarn test:browser && yarn build"
   },
   "author": "Vincent Thibault <vthibault.mobile@gmail.com>",
   "license": "MIT",
