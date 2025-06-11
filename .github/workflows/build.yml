@@ -32,22 +32,25 @@ jobs:
       - uses: actions/download-artifact@v4   # <─ traz o dist/
         with:
           name: dist
-          path: dist
       - run: yarn --frozen-lockfile
       - run: yarn test:node
 
   # ───── TESTES BROWSER ─────────────────────────────
   test-browser:
     runs-on: ubuntu-latest
-    needs: [lint, build, test-node]
+    needs: test-node          # simplificado
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: yarn
+      - uses: actions/download-artifact@v4  # garante dist/
+        with:
+          name: dist
       - run: yarn --frozen-lockfile
       - run: yarn test:browser
+
 
   # ───── BUILD ──────────────────────────────────────
   build:
