@@ -8,27 +8,24 @@
   "description": "A loader for GRF files (Ragnarok Online game file)",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "require": "./dist/index.cjs",
-      "import": "./dist/index.js"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
     }
   },
-  "types": "./dist/index.d.ts",
   "sideEffects": false,
-  "browser": {
-    "./dist/cjs/grf-loader.cjs": "./dist/umd/grf-loader.js"
-  },
   "files": [
-    "dist/",
-    "index.d.ts"
+    "dist/index.*"
   ],
   "scripts": {
     "test:node": "jest",
     "test:browser": "cypress run",
     "test": "yarn test:node --detectOpenHandles && yarn test:browser",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "build": "tsup",
+    "build": "tsup src/index.ts --dts --format cjs,esm,iife --globalName GrfLoader --sourcemap --minify --clean",
     "all_config": "yarn lint && yarn test:node && yarn test:browser && yarn build"
   },
   "author": "Vincent Thibault <vthibault.mobile@gmail.com>",
@@ -75,7 +72,7 @@
     "clearMocks": true,
     "collectCoverage": true,
     "coverageDirectory": "coverage",
-    "testEnvironment": "node"
-  },
-  "format": "prettier --write 'src/**/*.ts'"
+    "testEnvironment": "node",
+    "testPathIgnorePatterns": ["/node_modules/", "exports.test"]
+  }
 }
