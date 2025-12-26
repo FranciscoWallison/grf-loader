@@ -73,6 +73,9 @@
     "collectCoverage": true,
     "coverageDirectory": "coverage",
     "testEnvironment": "node",
-    "testPathIgnorePatterns": ["/node_modules/", "exports.test"]
+    "testPathIgnorePatterns": [
+      "/node_modules/",
+      "exports.test"
+    ]
   }
 }
