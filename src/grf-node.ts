@@ -1,10 +1,18 @@
 // src/grf-node.ts
-import { readSync, fstatSync } from 'fs';
+import { fstatSync, read as readCallback } from 'fs';
+import { promisify } from 'util';
 import { GrfBase } from './grf-base';
+import { bufferPool } from './buffer-pool';
+
+const readAsync = promisify(readCallback);
 
 export class GrfNode extends GrfBase<number> {
-  constructor(fd: number) {
+  private useBufferPool: boolean;
+
+  constructor(fd: number, options?: { useBufferPool?: boolean }) {
     super(fd);
+
+    this.useBufferPool = options?.useBufferPool ?? true;
 
     // Na nossa API, apenas FDs para arquivos regulares são válidos.
     // fstatSync lança erro se o descritor não existir ou não for arquivo.
@@ -24,13 +32,22 @@ export class GrfNode extends GrfBase<number> {
     offset: number,
     length: number
   ): Promise<Uint8Array> {
-    const buffer = Buffer.allocUnsafe(length);
-    const bytesRead = readSync(fd, buffer, 0, length, offset);
+    // Use buffer pool for better performance
+    const buffer = this.useBufferPool
+      ? bufferPool.acquire(length)
+      : Buffer.allocUnsafe(length);
+
+    const { bytesRead } = await readAsync(fd, buffer, 0, length, offset);
 
     if (bytesRead !== length) {
+      // Release buffer back to pool if read failed
+      if (this.useBufferPool) {
+        bufferPool.release(buffer);
+      }
       // ERRO TYPE: GRFNode: unexpected EOF
       throw new Error('Not a GRF file (invalid signature)');
     }
+
     return buffer;
   }
 }

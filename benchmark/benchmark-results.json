@@ -1,0 +1,58 @@
+[
+  {
+    "name": "Load GRF file",
+    "duration": 27.333433000000014,
+    "iterations": 50,
+    "avgTime": 0.5466686600000003,
+    "opsPerSec": 1829.2616225704242,
+    "memoryUsed": 1070456
+  },
+  {
+    "name": "Extract uncompressed file (raw.txt)",
+    "duration": 22.57260500000001,
+    "iterations": 50,
+    "avgTime": 0.4514521000000002,
+    "opsPerSec": 2215.0744231780063,
+    "memoryUsed": 974568
+  },
+  {
+    "name": "Extract compressed file (compressed.txt)",
+    "duration": 21.10871800000001,
+    "iterations": 50,
+    "avgTime": 0.4221743600000002,
+    "opsPerSec": 2368.6895622936445,
+    "memoryUsed": 974232
+  },
+  {
+    "name": "Extract header-encrypted file (partial-des.txt)",
+    "duration": 21.807481000000053,
+    "iterations": 50,
+    "avgTime": 0.43614962000000107,
+    "opsPerSec": 2292.791175652056,
+    "memoryUsed": 942968
+  },
+  {
+    "name": "Extract fully-encrypted file (full-des-compressed.txt)",
+    "duration": 21.21347800000001,
+    "iterations": 50,
+    "avgTime": 0.42426956000000016,
+    "opsPerSec": 2356.9920971940564,
+    "memoryUsed": 866576
+  },
+  {
+    "name": "Extract ALL files (7 files)",
+    "duration": 30.19034099999999,
+    "iterations": 20,
+    "avgTime": 1.5095170499999995,
+    "opsPerSec": 662.4635342807161,
+    "memoryUsed": 1018352
+  },
+  {
+    "name": "Repeated extraction (10x same file)",
+    "duration": 9.079751999999985,
+    "iterations": 20,
+    "avgTime": 0.45398759999999927,
+    "opsPerSec": 2202.703333747445,
+    "memoryUsed": 482048
+  }
+]
