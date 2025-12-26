@@ -4,7 +4,7 @@
     "access": "public"
   },
   "type": "module",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "A loader for GRF files (Ragnarok Online game file)",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
