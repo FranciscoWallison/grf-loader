@@ -118,6 +118,176 @@ export function tryDecodeWithQuality(
   return { text, badChars, c1Chars, replacementChars };
 }
 
+// ============================================================================
+// Mojibake Detection and Fixing
+// ============================================================================
+
+/**
+ * Common mojibake patterns that indicate CP949 was misread as Windows-1252.
+ * These are high-frequency Korean syllable byte sequences that produce
+ * recognizable Latin character patterns when misinterpreted.
+ */
+const MOJIBAKE_PATTERNS = [
+  /[ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏÐÑÒÓÔÕÖØÙÚÛÜÝÞß][¡-þ]/,  // Common Korean lead bytes as Latin
+  /À¯/,  // 유 (very common)
+  /Àú/,  // 저
+  /ÀÎ/,  // 인
+  /Å¸/,  // 터/타
+  /Æä/,  // 페
+  /ÀÌ/,  // 이
+  /½º/,  // 스
+  /¾Æ/,  // 아
+  /¸ð/,  // 모
+  /¸®/,  // 리
+  /¿¡/,  // 에
+  /Áö/,  // 지
+  /µ¥/,  // 데
+  /ÅØ/,  // 텍
+  /½ºÆ®/,  // 스트
+  /¸ÁÅä/,  // 망토
+];
+
+/**
+ * Check if a string looks like mojibake (CP949 bytes misread as Windows-1252).
+ *
+ * Mojibake occurs when:
+ * 1. Korean text is encoded as CP949 bytes
+ * 2. Those bytes are incorrectly decoded as Windows-1252/Latin-1
+ *
+ * Example: "유저인터페이스" → "À¯ÀúÀÎÅÍÆäÀÌ½º"
+ *
+ * @param str - The string to check
+ * @returns true if the string appears to be mojibake
+ */
+export function isMojibake(str: string): boolean {
+  // Quick checks
+  if (!str || str.length === 0) return false;
+
+  // If string contains Korean characters, it's not mojibake
+  if (/[\uAC00-\uD7AF]/.test(str)) return false;
+
+  // Check for common mojibake patterns
+  for (const pattern of MOJIBAKE_PATTERNS) {
+    if (pattern.test(str)) return true;
+  }
+
+  // Check for high concentration of Latin Extended characters (0x80-0xFF)
+  // which are common in mojibake but rare in normal text
+  let highLatinCount = 0;
+  for (const char of str) {
+    const code = char.charCodeAt(0);
+    if (code >= 0x80 && code <= 0xFF) {
+      highLatinCount++;
+    }
+  }
+
+  // If more than 30% of characters are in the Latin Extended range,
+  // it's likely mojibake
+  const ratio = highLatinCount / str.length;
+  return ratio > 0.3;
+}
+
+/**
+ * Fix mojibake by re-encoding as Windows-1252 and decoding as CP949.
+ *
+ * This reverses the common encoding error where CP949 bytes were
+ * incorrectly interpreted as Windows-1252.
+ *
+ * Example: "À¯ÀúÀÎÅÍÆäÀÌ½º" → "유저인터페이스"
+ *
+ * @param garbled - The mojibake string to fix
+ * @returns The corrected Korean string, or the original if unfixable
+ */
+export function fixMojibake(garbled: string): string {
+  if (!iconv) {
+    // Without iconv-lite, we can't fix mojibake
+    return garbled;
+  }
+
+  try {
+    // Encode the garbled string back to Windows-1252 bytes
+    const bytes = iconv.encode(garbled, 'windows-1252');
+    // Decode those bytes as CP949 to get the original Korean
+    const fixed = iconv.decode(bytes, 'cp949');
+
+    // Verify the fix worked by checking if:
+    // 1. The result contains Korean characters (Hangul Syllables block)
+    // 2. The result has fewer or equal bad chars
+    const hasKorean = /[\uAC00-\uD7AF]/.test(fixed);
+    const fixedBadChars = countBadChars(fixed);
+    const garbledBadChars = countBadChars(garbled);
+
+    if (hasKorean && fixedBadChars <= garbledBadChars) {
+      return fixed;
+    }
+
+    return garbled;
+  } catch {
+    return garbled;
+  }
+}
+
+/**
+ * Convert Korean text to mojibake (for testing purposes).
+ *
+ * This simulates the encoding error where Korean text is encoded as CP949
+ * but decoded as Windows-1252.
+ *
+ * Example: "유저인터페이스" → "À¯ÀúÀÎÅÍÆäÀÌ½º"
+ *
+ * @param korean - The Korean string to garble
+ * @returns The mojibake string
+ */
+export function toMojibake(korean: string): string {
+  if (!iconv) {
+    return korean;
+  }
+
+  try {
+    const bytes = iconv.encode(korean, 'cp949');
+    return iconv.decode(bytes, 'windows-1252');
+  } catch {
+    return korean;
+  }
+}
+
+/**
+ * Normalize a filename by detecting and fixing encoding issues.
+ *
+ * This function:
+ * 1. Checks if the filename is mojibake and fixes it
+ * 2. Returns the normalized filename
+ *
+ * @param filename - The filename to normalize
+ * @returns The normalized filename
+ */
+export function normalizeFilename(filename: string): string {
+  if (isMojibake(filename)) {
+    return fixMojibake(filename);
+  }
+  return filename;
+}
+
+/**
+ * Normalize a path by fixing mojibake in each segment.
+ *
+ * @param filepath - The full path to normalize
+ * @returns The normalized path
+ */
+export function normalizePath(filepath: string): string {
+  // Split by both forward and back slashes
+  const segments = filepath.split(/[\\/]/);
+  const normalizedSegments = segments.map(seg => normalizeFilename(seg));
+
+  // Preserve original separator style
+  const separator = filepath.includes('\\') ? '\\' : '/';
+  return normalizedSegments.join(separator);
+}
+
+// ============================================================================
+// Encoding Detection
+// ============================================================================
+
 /**
  * Detect the best encoding for Korean GRF files by analyzing byte patterns
  * and comparing decoded results.
