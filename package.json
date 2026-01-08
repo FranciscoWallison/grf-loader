@@ -26,7 +26,9 @@
     "test": "yarn test:node --detectOpenHandles && yarn test:browser",
     "lint": "tsc -p tsconfig.json --noEmit",
     "build": "tsup src/index.ts --dts --format cjs,esm,iife --globalName GrfLoader --sourcemap --minify --clean",
-    "all_config": "yarn lint && yarn test:node && yarn test:browser && yarn build"
+    "all_config": "yarn lint && yarn test:node && yarn test:browser && yarn build",
+    "validate:grf": "node tools/test-grf-read.mjs",
+    "validate:all": "node tools/validate-all-grfs.mjs"
   },
   "author": "Vincent Thibault <vthibault.mobile@gmail.com>",
   "license": "MIT",
