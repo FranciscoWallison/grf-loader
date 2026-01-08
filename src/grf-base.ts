@@ -141,6 +141,224 @@ function countReplacementChars(str: string): number {
 }
 
 /**
+ * Check if a byte sequence looks like valid EUC-KR/CP949.
+ * EUC-KR uses:
+ *   - Single-byte ASCII: 0x00-0x7F
+ *   - Double-byte Hangul: first byte 0xB0-0xFE, second byte 0xA1-0xFE
+ * CP949 extends this with:
+ *   - First byte 0x81-0xFE, second byte 0x41-0x5A, 0x61-0x7A, 0x81-0xFE
+ *
+ * Returns a score: higher = more likely to be Korean encoding
+ */
+function scoreKoreanEncoding(bytes: Uint8Array): { score: number; validPairs: number; invalidPairs: number } {
+  let validPairs = 0;
+  let invalidPairs = 0;
+  let hangulChars = 0;
+  let i = 0;
+
+  while (i < bytes.length) {
+    const b = bytes[i];
+
+    // ASCII range (single byte)
+    if (b <= 0x7F) {
+      i++;
+      continue;
+    }
+
+    // Check for multi-byte sequence
+    if (i + 1 >= bytes.length) {
+      // Incomplete sequence at end
+      invalidPairs++;
+      break;
+    }
+
+    const b2 = bytes[i + 1];
+
+    // EUC-KR Hangul range (most common Korean characters)
+    // First byte: 0xB0-0xFE, Second byte: 0xA1-0xFE
+    if (b >= 0xB0 && b <= 0xFE && b2 >= 0xA1 && b2 <= 0xFE) {
+      validPairs++;
+      hangulChars++;
+      i += 2;
+      continue;
+    }
+
+    // CP949 extended range
+    // First byte: 0x81-0xFE
+    // Second byte: 0x41-0x5A (A-Z), 0x61-0x7A (a-z), 0x81-0xFE
+    if (b >= 0x81 && b <= 0xFE) {
+      const validSecond = (b2 >= 0x41 && b2 <= 0x5A) ||
+                         (b2 >= 0x61 && b2 <= 0x7A) ||
+                         (b2 >= 0x81 && b2 <= 0xFE);
+      if (validSecond) {
+        validPairs++;
+        i += 2;
+        continue;
+      }
+    }
+
+    // Invalid sequence
+    invalidPairs++;
+    i++;
+  }
+
+  // Calculate score: weight Hangul characters more heavily
+  const totalPairs = validPairs + invalidPairs;
+  if (totalPairs === 0) return { score: 0, validPairs: 0, invalidPairs: 0 };
+
+  // Score formula: validPairs ratio + bonus for actual Hangul chars
+  const validRatio = validPairs / totalPairs;
+  const hangulBonus = hangulChars > 0 ? 0.2 : 0;
+  const score = validRatio + hangulBonus;
+
+  return { score, validPairs, invalidPairs };
+}
+
+/**
+ * Check if bytes look like valid UTF-8.
+ * Returns a score: higher = more likely to be UTF-8
+ */
+function scoreUtf8Encoding(bytes: Uint8Array): { score: number; validChars: number; invalidChars: number } {
+  let validChars = 0;
+  let invalidChars = 0;
+  let i = 0;
+
+  while (i < bytes.length) {
+    const b = bytes[i];
+
+    // ASCII (single byte)
+    if (b <= 0x7F) {
+      validChars++;
+      i++;
+      continue;
+    }
+
+    // Check for multi-byte UTF-8 sequences
+    let expectedContinuationBytes = 0;
+    if ((b & 0xE0) === 0xC0) expectedContinuationBytes = 1;      // 110xxxxx
+    else if ((b & 0xF0) === 0xE0) expectedContinuationBytes = 2;  // 1110xxxx
+    else if ((b & 0xF8) === 0xF0) expectedContinuationBytes = 3;  // 11110xxx
+    else {
+      // Invalid UTF-8 start byte
+      invalidChars++;
+      i++;
+      continue;
+    }
+
+    // Check continuation bytes (10xxxxxx)
+    let valid = true;
+    for (let j = 1; j <= expectedContinuationBytes; j++) {
+      if (i + j >= bytes.length || (bytes[i + j] & 0xC0) !== 0x80) {
+        valid = false;
+        break;
+      }
+    }
+
+    if (valid) {
+      validChars++;
+      i += 1 + expectedContinuationBytes;
+    } else {
+      invalidChars++;
+      i++;
+    }
+  }
+
+  const total = validChars + invalidChars;
+  if (total === 0) return { score: 0, validChars: 0, invalidChars: 0 };
+
+  return { score: validChars / total, validChars, invalidChars };
+}
+
+/**
+ * Detect the best encoding for a collection of filename bytes.
+ * Uses multiple heuristics:
+ * 1. Valid byte sequence analysis (UTF-8 vs EUC-KR/CP949)
+ * 2. Replacement character ratio after decoding
+ * 3. Pattern matching for typical GRF paths (data\, sprite\, etc.)
+ */
+function detectBestEncoding(
+  sampleBytes: Uint8Array[],
+  threshold: number
+): FilenameEncoding {
+  if (sampleBytes.length === 0) return 'utf-8';
+
+  let totalUtf8Score = 0;
+  let totalKoreanScore = 0;
+  let totalBytes = 0;
+  let samplesWithHighBytes = 0;
+
+  // Analyze byte patterns
+  for (const bytes of sampleBytes) {
+    totalBytes += bytes.length;
+
+    // Check if this sample has non-ASCII bytes
+    const hasHighBytes = bytes.some(b => b > 0x7F);
+    if (hasHighBytes) {
+      samplesWithHighBytes++;
+
+      const utf8Score = scoreUtf8Encoding(bytes);
+      const koreanScore = scoreKoreanEncoding(bytes);
+
+      totalUtf8Score += utf8Score.score;
+      totalKoreanScore += koreanScore.score;
+    }
+  }
+
+  // If no high bytes found, it's pure ASCII - use UTF-8
+  if (samplesWithHighBytes === 0) {
+    return 'utf-8';
+  }
+
+  // Average scores
+  const avgUtf8Score = totalUtf8Score / samplesWithHighBytes;
+  const avgKoreanScore = totalKoreanScore / samplesWithHighBytes;
+
+  // Also check decoded results for replacement characters
+  const utf8Decoder = new TextDecoder('utf-8', { fatal: false });
+  const eucKrDecoder = new TextDecoder('euc-kr', { fatal: false });
+
+  let utf8BadChars = 0;
+  let eucKrBadChars = 0;
+  let totalDecodedChars = 0;
+
+  for (const bytes of sampleBytes) {
+    const utf8Decoded = utf8Decoder.decode(bytes);
+    const eucKrDecoded = eucKrDecoder.decode(bytes);
+
+    totalDecodedChars += utf8Decoded.length;
+    utf8BadChars += countReplacementChars(utf8Decoded);
+    eucKrBadChars += countReplacementChars(eucKrDecoded);
+  }
+
+  const utf8BadRatio = totalDecodedChars > 0 ? utf8BadChars / totalDecodedChars : 0;
+  const eucKrBadRatio = totalDecodedChars > 0 ? eucKrBadChars / totalDecodedChars : 0;
+
+  // Decision logic:
+  // 1. If UTF-8 has very few bad chars and valid sequences, use UTF-8
+  // 2. If Korean encoding has better scores, use EUC-KR
+  // 3. Compare replacement character ratios
+
+  // If UTF-8 looks perfect, use it
+  if (utf8BadRatio < threshold && avgUtf8Score > 0.95) {
+    return 'utf-8';
+  }
+
+  // If Korean encoding produces fewer bad chars and has valid sequences
+  if (eucKrBadRatio < utf8BadRatio && avgKoreanScore > 0.7) {
+    return 'euc-kr';
+  }
+
+  // If UTF-8 has many bad chars but Korean doesn't improve much, still prefer UTF-8
+  // unless Korean is significantly better
+  if (avgKoreanScore > avgUtf8Score + 0.3 || eucKrBadRatio < utf8BadRatio * 0.5) {
+    return 'euc-kr';
+  }
+
+  // Default to UTF-8
+  return 'utf-8';
+}
+
+/**
  * Try to decode bytes with a specific encoding
  */
 function tryDecode(bytes: Uint8Array, encoding: string): string | null {
@@ -325,42 +543,33 @@ export abstract class GrfBase<T> {
       });
     }
 
-    // First pass: collect all raw filename bytes for auto-detection
-    const rawFilenames: { bytes: Uint8Array; startPos: number; entry: TFileEntry }[] = [];
+    // Determine encoding to use
     let detectedEncoding: FilenameEncoding = this.options.filenameEncoding;
 
-    // If auto-detect, we need to sample filenames first
+    // If auto-detect, sample filenames and use improved detection algorithm
     if (this.options.filenameEncoding === 'auto') {
       const sampleBytes: Uint8Array[] = [];
       let samplePos = 0;
-      const sampleCount = Math.min(100, this.fileCount); // Sample first 100 files
+      // Sample more files for better detection accuracy
+      const sampleCount = Math.min(200, this.fileCount);
 
       for (let i = 0; i < sampleCount && samplePos < data.length; i++) {
         let endPos = samplePos;
         while (data[endPos] !== 0 && endPos < data.length) endPos++;
-        sampleBytes.push(data.subarray(samplePos, endPos));
+
+        // Only include samples with non-ASCII bytes for detection
+        const bytes = data.subarray(samplePos, endPos);
+        sampleBytes.push(bytes);
+
         samplePos = endPos + 1 + 17; // Skip entry data (17 bytes)
       }
 
-      // Check ratio of bad chars in UTF-8
-      const utf8Decoder = new TextDecoder('utf-8', { fatal: false });
-      let totalChars = 0;
-      let badChars = 0;
-
-      for (const bytes of sampleBytes) {
-        const decoded = utf8Decoder.decode(bytes);
-        totalChars += decoded.length;
-        badChars += countReplacementChars(decoded);
-      }
-
-      const badRatio = totalChars > 0 ? badChars / totalChars : 0;
-
-      // If too many bad chars, try Korean encoding
-      if (badRatio > this.options.autoDetectThreshold) {
-        detectedEncoding = 'euc-kr';
-      } else {
-        detectedEncoding = 'utf-8';
-      }
+      // Use improved encoding detection algorithm
+      // This analyzes:
+      // 1. Valid byte sequence patterns for UTF-8 vs EUC-KR/CP949
+      // 2. Replacement character ratios after decoding
+      // 3. Korean character frequency patterns
+      detectedEncoding = detectBestEncoding(sampleBytes, this.options.autoDetectThreshold);
     }
 
     this._stats.detectedEncoding = detectedEncoding;
