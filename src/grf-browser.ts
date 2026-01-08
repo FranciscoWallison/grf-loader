@@ -1,5 +1,5 @@
 import jDataview from 'jdataview';
-import {GrfBase} from './grf-base';
+import {GrfBase, GrfOptions} from './grf-base';
 
 /**
  * Using this Browser, we work from a File or Blob object.
@@ -7,6 +7,9 @@ import {GrfBase} from './grf-base';
  * loading 2 gigas into memory
  */
 export class GrfBrowser extends GrfBase<File | Blob> {
+  constructor(file: File | Blob, options?: GrfOptions) {
+    super(file, options);
+  }
   public async getStreamBuffer(
     buffer: File | Blob,
     offset: number,
