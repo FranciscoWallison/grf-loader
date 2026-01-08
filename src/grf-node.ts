@@ -1,16 +1,22 @@
 // src/grf-node.ts
 import { fstatSync, read as readCallback } from 'fs';
 import { promisify } from 'util';
-import { GrfBase } from './grf-base';
+import { GrfBase, GrfOptions } from './grf-base';
 import { bufferPool } from './buffer-pool';
 
 const readAsync = promisify(readCallback);
 
+/** Options for GrfNode */
+export interface GrfNodeOptions extends GrfOptions {
+  /** Use buffer pool for better performance (default: true) */
+  useBufferPool?: boolean;
+}
+
 export class GrfNode extends GrfBase<number> {
   private useBufferPool: boolean;
 
-  constructor(fd: number, options?: { useBufferPool?: boolean }) {
-    super(fd);
+  constructor(fd: number, options?: GrfNodeOptions) {
+    super(fd, options);
 
     this.useBufferPool = options?.useBufferPool ?? true;
 
