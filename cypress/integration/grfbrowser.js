@@ -79,7 +79,14 @@ describe('GRFBrowser', () => {
     await grf.load();
 
     expect(grf.fileCount).to.eq(7);
-    expect(Array.from(grf.files)).to.deep.eq([
+
+    // Filter out rawNameBytes from entries for comparison (it varies by encoding)
+    const filesWithoutRawBytes = Array.from(grf.files).map(([name, entry]) => {
+      const {rawNameBytes, ...rest} = entry;
+      return [name, rest];
+    });
+
+    expect(filesWithoutRawBytes).to.deep.eq([
       [
         'raw',
         {
