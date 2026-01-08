@@ -65,6 +65,8 @@
     "typescript": "5"
   },
   "dependencies": {
+    "@types/iconv-lite": "^0.0.1",
+    "iconv-lite": "^0.6.3",
     "jdataview": "^2.5.0",
     "pako": "^1.0.11"
   },
