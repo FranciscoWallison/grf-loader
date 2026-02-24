@@ -330,6 +330,179 @@ describe('GRFNode', () => {
     });
   });
 
+  // =========================================================================
+  // GRF 0x300 Tests
+  // =========================================================================
+  describe('GRF 0x300 support', () => {
+    it('Should load 0x300 GRF and detect correct version', async () => {
+      const fd = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf = new GrfNode(fd);
+      await grf.load();
+
+      expect(grf.version).toBe(0x300);
+      expect(grf.fileCount).toBe(7);
+      closeSync(fd);
+    });
+
+    it('Should list same files as 0x200', async () => {
+      const fd200 = openSync(resolve(__dirname, '../data/with-files.grf'), 'r');
+      const grf200 = new GrfNode(fd200);
+      await grf200.load();
+
+      const fd300 = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf300 = new GrfNode(fd300);
+      await grf300.load();
+
+      const files200 = grf200.listFiles().sort();
+      const files300 = grf300.listFiles().sort();
+      expect(files300).toEqual(files200);
+
+      closeSync(fd200);
+      closeSync(fd300);
+    });
+
+    it('Should extract raw file (no compression, no encryption)', async () => {
+      const fd = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf = new GrfNode(fd);
+      await grf.load();
+
+      const {data, error} = await grf.getFile('raw');
+      const result = String.fromCharCode.apply(null, data);
+
+      expect(error).toBe(null);
+      expect(result).toBe(
+        'test test test test test test test test test test test test test test test'
+      );
+      closeSync(fd);
+    });
+
+    it('Should extract compressed file (no encryption)', async () => {
+      const fd = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf = new GrfNode(fd);
+      await grf.load();
+
+      const {data, error} = await grf.getFile('compressed');
+      const result = String.fromCharCode.apply(null, data);
+
+      expect(error).toBe(null);
+      expect(result).toBe(
+        'test test test test test test test test test test test test test test test'
+      );
+      closeSync(fd);
+    });
+
+    it('Should extract file with DES header-only encryption', async () => {
+      const fd = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf = new GrfNode(fd);
+      await grf.load();
+
+      const {data, error} = await grf.getFile('compressed-des-header');
+      const result = String.fromCharCode.apply(null, data);
+
+      expect(error).toBe(null);
+      expect(result).toBe(
+        'test test test test test test test test test test test test test test test'
+      );
+      closeSync(fd);
+    });
+
+    it('Should extract file with DES full encryption', async () => {
+      const fd = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf = new GrfNode(fd);
+      await grf.load();
+
+      const {data, error} = await grf.getFile('compressed-des-full');
+      const result = String.fromCharCode.apply(null, data);
+
+      expect(error).toBe(null);
+      expect(result).toBe(
+        'test test test test test test test test test test test test test test test'
+      );
+      closeSync(fd);
+    });
+
+    it('Should extract big file with DES full encryption', async () => {
+      const fd = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf = new GrfNode(fd);
+      await grf.load();
+
+      const {data, error} = await grf.getFile('big-compressed-des-full');
+      const result = String.fromCharCode.apply(null, data);
+
+      expect(error).toBe(null);
+      expect(result).toBe(
+        'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed venenatis bibendum venenatis. Aliquam quis velit urna. Suspendisse nec posuere sem. Donec risus quam, vulputate sed augue ultricies, dignissim hendrerit purus. Nulla euismod dolor enim, vel fermentum ex ultricies ac. Donec aliquet vehicula egestas. Sed accumsan velit ac mauris porta, id imperdiet purus aliquam. Phasellus et faucibus erat. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; Pellentesque vel nisl efficitur, euismod augue eu, consequat dui. Maecenas vestibulum tortor purus, egestas posuere tortor imperdiet eget. Nulla sit amet placerat diam.'
+      );
+      closeSync(fd);
+    });
+
+    it('Should produce identical extraction results between 0x200 and 0x300', async () => {
+      const fd200 = openSync(resolve(__dirname, '../data/with-files.grf'), 'r');
+      const grf200 = new GrfNode(fd200);
+      await grf200.load();
+
+      const fd300 = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf300 = new GrfNode(fd300);
+      await grf300.load();
+
+      const testFiles = ['raw', 'compressed', 'compressed-des-header', 'compressed-des-full', 'big-compressed-des-full'];
+      for (const name of testFiles) {
+        const r200 = await grf200.getFile(name);
+        const r300 = await grf300.getFile(name);
+
+        expect(r200.error).toBe(null);
+        expect(r300.error).toBe(null);
+        expect(Array.from(r300.data!)).toEqual(Array.from(r200.data!));
+      }
+
+      closeSync(fd200);
+      closeSync(fd300);
+    });
+
+    it('Should provide correct statistics for 0x300', async () => {
+      const fd = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf = new GrfNode(fd);
+      await grf.load();
+
+      const stats = grf.getStats();
+      expect(stats.fileCount).toBe(6); // 6 files (excluding folder)
+      expect(stats.badNameCount).toBe(0);
+      expect(stats.detectedEncoding).toBe('utf-8');
+      closeSync(fd);
+    });
+
+    it('Should resolve paths case-insensitively in 0x300', async () => {
+      const fd = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf = new GrfNode(fd);
+      await grf.load();
+
+      expect(grf.resolvePath('RAW').status).toBe('found');
+      expect(grf.resolvePath('COMPRESSED').status).toBe('found');
+      expect(grf.resolvePath('notfound').status).toBe('not_found');
+      closeSync(fd);
+    });
+
+    it('Should get correct entry metadata for 0x300', async () => {
+      const fd = openSync(resolve(__dirname, '../data/with-files-v300.grf'), 'r');
+      const grf = new GrfNode(fd);
+      await grf.load();
+
+      const rawEntry = grf.getEntry('raw');
+      expect(rawEntry).not.toBeNull();
+      expect(rawEntry!.compressedSize).toBe(74);
+      expect(rawEntry!.lengthAligned).toBe(74);
+      expect(rawEntry!.realSize).toBe(74);
+      expect(rawEntry!.type).toBe(1);
+      expect(rawEntry!.offset).toBe(0);
+
+      const compEntry = grf.getEntry('compressed');
+      expect(compEntry).not.toBeNull();
+      expect(compEntry!.compressedSize).toBe(16);
+      expect(compEntry!.realSize).toBe(74);
+      closeSync(fd);
+    });
+  });
+
   describe('Options', () => {
     it('Should accept encoding option', async () => {
       const fd = openSync(resolve(__dirname, '../data/with-files.grf'), 'r');

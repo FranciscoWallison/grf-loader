@@ -227,13 +227,42 @@ export abstract class GrfBase<T> {
     }
 
     reader.skip(15);
-    this.fileTableOffset = reader.getUint32() + HEADER_SIZE;
-    const reservedFiles = reader.getUint32();
-    this.fileCount = reader.getUint32() - reservedFiles - 7;
+    // Now at offset 30. Version is always at offset 42 for both 0x200 and 0x300.
+    // Read version first to determine how to parse the rest of the header.
+    // Save position, peek version, then parse based on version.
+    const afterKey = reader.tell();
+    reader.seek(42);
     this.version = reader.getUint32();
 
-    if (this.version !== 0x200) {
+    if (this.version !== 0x200 && this.version !== 0x300) {
       throw new GrfError('UNSUPPORTED_VERSION', `Unsupported version "0x${this.version.toString(16)}"`, { version: this.version });
+    }
+
+    reader.seek(afterKey);
+
+    if (this.version === 0x200) {
+      // 0x200: [table_offset:u32][seeds:u32][filecount:u32][version:u32]
+      this.fileTableOffset = reader.getUint32() + HEADER_SIZE;
+      const reservedFiles = reader.getUint32();
+      this.fileCount = reader.getUint32() - reservedFiles - 7;
+    } else {
+      // 0x300: [table_offset:u64][filecount:u32][version:u32]
+      const low = reader.getUint32();
+      const high = reader.getUint32();
+
+      // GRFEditor heuristic: bytes 35-37 (upper 3 bytes of high word) must be zero.
+      // Protects against mis-tagged GRFs where version says 0x300 but layout is 0x200.
+      if ((high >>> 8) !== 0) {
+        // Fall back to 0x200 parsing
+        this.version = 0x200;
+        reader.seek(afterKey);
+        this.fileTableOffset = reader.getUint32() + HEADER_SIZE;
+        const reservedFiles = reader.getUint32();
+        this.fileCount = reader.getUint32() - reservedFiles - 7;
+      } else {
+        this.fileTableOffset = high * 0x100000000 + low + HEADER_SIZE;
+        this.fileCount = reader.getUint32();
+      }
     }
 
     // Validate entry count against limit
@@ -246,9 +275,12 @@ export abstract class GrfBase<T> {
   }
 
   private async parseFileList(): Promise<void> {
+    // GRF 0x300 has an extra 4-byte field before the file table header
+    const tableSkip = this.version === 0x300 ? 4 : 0;
+
     // Read table list, stored information
     const reader = await this.getStreamReader(
-      this.fileTableOffset,
+      this.fileTableOffset + tableSkip,
       FILE_TABLE_SIZE
     );
     const compressedSize = reader.getUint32();
@@ -257,7 +289,7 @@ export abstract class GrfBase<T> {
     // Load the chunk and uncompress it
     const compressed = await this.getStreamBuffer(
       this.fd,
-      this.fileTableOffset + FILE_TABLE_SIZE,
+      this.fileTableOffset + tableSkip + FILE_TABLE_SIZE,
       compressedSize
     );
 
@@ -289,6 +321,8 @@ export abstract class GrfBase<T> {
       let samplePos = 0;
       // Sample more files for better detection accuracy
       const sampleCount = Math.min(200, this.fileCount);
+      // 0x200: 17-byte entries (4-byte offset), 0x300: 21-byte entries (8-byte offset)
+      const entryDataSize = this.version === 0x300 ? 21 : 17;
 
       for (let i = 0; i < sampleCount && samplePos < data.length; i++) {
         let endPos = samplePos;
@@ -298,7 +332,7 @@ export abstract class GrfBase<T> {
         const bytes = data.subarray(samplePos, endPos);
         sampleBytes.push(bytes);
 
-        samplePos = endPos + 1 + 17; // Skip entry data (17 bytes)
+        samplePos = endPos + 1 + entryDataSize;
       }
 
       // Use improved encoding detection algorithm from decoder module
@@ -315,6 +349,9 @@ export abstract class GrfBase<T> {
     this._stats.badNameCount = 0;
     this._stats.collisionCount = 0;
     this._stats.extensionStats.clear();
+
+    // 0x200: 17-byte entries (4-byte offset), 0x300: 21-byte entries (8-byte offset)
+    const entryDataSize = this.version === 0x300 ? 21 : 17;
 
     for (let i = 0, p = 0; i < this.fileCount; ++i) {
       // Validate position
@@ -345,7 +382,7 @@ export abstract class GrfBase<T> {
       p = endPos + 1;
 
       // Validate remaining bytes for entry
-      if (p + 17 > data.length) {
+      if (p + entryDataSize > data.length) {
         throw new GrfError('CORRUPT_TABLE', `Incomplete entry data at entry ${i}`, {
           position: p,
           dataLength: data.length,
@@ -354,12 +391,33 @@ export abstract class GrfBase<T> {
       }
 
       // prettier-ignore
+      const compressedSize = data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24);
+      // prettier-ignore
+      const lengthAligned = data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24);
+      // prettier-ignore
+      const realSize = data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24);
+      const type = data[p++];
+
+      let offset: number;
+      if (this.version === 0x300) {
+        // 0x300: 8-byte (64-bit) offset
+        // prettier-ignore
+        const low = (data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24)) >>> 0;
+        // prettier-ignore
+        const high = (data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24)) >>> 0;
+        offset = high * 0x100000000 + low;
+      } else {
+        // 0x200: 4-byte (32-bit) offset
+        // prettier-ignore
+        offset = (data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24)) >>> 0;
+      }
+
       const entry: TFileEntry = {
-        compressedSize: data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24),
-        lengthAligned: data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24),
-        realSize: data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24),
-        type: data[p++],
-        offset: (data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24)) >>> 0,
+        compressedSize,
+        lengthAligned,
+        realSize,
+        type,
+        offset,
         rawNameBytes: rawBytes
       };
 
