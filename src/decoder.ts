@@ -5,20 +5,26 @@
  * Falls back to TextDecoder in browser (with limitations for CP949 extended chars).
  */
 
-// Try to import iconv-lite (available in Node.js)
-let iconv: typeof import('iconv-lite') | null = null;
+/** The part of iconv-lite this module uses. */
+export interface KoreanCodec {
+  decode(bytes: Uint8Array, encoding: string): string;
+  encode(text: string, encoding: string): Uint8Array;
+}
 
-// Dynamic import for Node.js environment
-try {
-  // Use require for synchronous loading in Node.js
-  // This will fail in browser environments
-  if (typeof process !== 'undefined' && process.versions?.node) {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    iconv = require('iconv-lite');
-  }
-} catch {
-  // iconv-lite not available (browser environment)
-  iconv = null;
+/**
+ * iconv-lite, when running in Node. The Node entry point registers it (grf-node.ts); the browser
+ * build never loads it.
+ *
+ * It used to be loaded here with a runtime `require('iconv-lite')`. The ES module build has no
+ * `require`, so there the lookup failed silently and every Korean name went through TextDecoder --
+ * whose EUC-KR in Node knows none of CP949's extension syllables: 13 names of the bRO data.grf came out
+ * wrong. And the browser build bundled iconv-lite, which needs Node's Buffer, so it did not load at all.
+ */
+let iconv: KoreanCodec | null = null;
+
+/** Register iconv-lite (or anything with its decode/encode). Called by the Node entry point. */
+export function setKoreanCodec(codec: KoreanCodec | null): void {
+  iconv = codec;
 }
 
 /**
@@ -84,8 +90,7 @@ export function decodeBytes(bytes: Uint8Array, encoding: string): string {
     try {
       // Always use 'cp949' with iconv-lite as it's a superset of euc-kr
       // This properly handles the extended range that causes C1 control chars
-      const buffer = Buffer.from(bytes);
-      return iconv.decode(buffer, 'cp949');
+      return iconv.decode(bytes, 'cp949');
     } catch {
       // Fall through to TextDecoder
     }

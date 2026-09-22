@@ -109,9 +109,16 @@ jobs:
       - name: Check dist contents
         run: ls -la dist/
 
-      - name: Bump version & tag
+      - name: Version & tag
         run: |
-          npm version patch -m "chore(release): %s [skip ci]"
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "@chicowall/grf-loader@$VERSION" version >/dev/null 2>&1; then
+            # Nothing set a version for this release: take the next patch.
+            npm version patch -m "chore(release): %s [skip ci]"
+          else
+            # package.json already names a version that is not on npm: publish that one.
+            git tag -a "v$VERSION" -m "v$VERSION" || true
+          fi
           git push --follow-tags
 
       - name: Publish to npm

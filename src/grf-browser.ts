@@ -1,4 +1,4 @@
-import jDataview from 'jdataview';
+import pako from 'pako';
 import {GrfBase, GrfOptions} from './grf-base';
 
 /**
@@ -22,5 +22,9 @@ export class GrfBrowser extends GrfBase<File | Blob> {
         resolve(new Uint8Array(reader.result as ArrayBuffer));
       reader.readAsArrayBuffer(buffer.slice(offset, offset + length));
     });
+  }
+
+  protected inflate(data: Uint8Array): Uint8Array {
+    return pako.inflate(data);
   }
 }

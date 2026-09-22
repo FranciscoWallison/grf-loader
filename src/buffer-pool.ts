@@ -1,6 +1,10 @@
 /**
  * Simple buffer pool for reducing GC pressure
  * Pools buffers of common sizes for reuse
+ *
+ * @deprecated GrfNode no longer reads through it: nothing released the buffers it handed out, and reusing
+ * one would pull the memory out from under a stored entry, which is returned as a view into it. Still
+ * exported for anything that took it from this package; removed in the next major version.
  */
 
 interface PoolEntry {
