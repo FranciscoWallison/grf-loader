@@ -1,185 +1,52 @@
-# 📊 Análise de Performance - GRF Loader
+# Performance
 
-## 🎯 Otimizações Implementadas
+Numbers from `benchmark/real-grf-profile.mjs` on a real archive: the `data.grf` of a bRO client,
+3.27 GiB, 205,404 files, names in CP949. Each build runs in a process of its own, after a warm-up pass
+so neither one pays for the other's reads from disk.
 
-### 1. ✅ Async I/O Real (fs.promises)
-- **Antes:** `readSync()` bloqueando o event loop
-- **Depois:** `promisify(read)` - I/O verdadeiramente assíncrono
-- **Impacto:** Libera event loop para outras operações (crucial para servidores)
-
-### 2. ✅ Cache LRU
-- **Implementação:** Cache de até 50 arquivos descomprimidos
-- **Benefício:** Evita reprocessamento (descompressão + decriptação)
-- **API:** `clearCache()` para gerenciamento manual
-
-### 3. ✅ TextDecoder API
-- **Antes:** `String.fromCharCode()` em loop
-- **Depois:** `TextDecoder.decode()` com subarray
-- **Ganho teórico:** 5-10x mais rápido para parsing de strings
-
-### 4. ✅ Buffer Pool
-- **Implementação:** Pool de buffers reutilizáveis (1KB - 256KB)
-- **Benefício:** Reduz pressão no GC
-- **Controle:** Opção `useBufferPool` no construtor
-
----
-
-## 📈 Resultados de Benchmark
-
-### Arquivo de Teste
-- **Nome:** `with-files.grf`
-- **Tamanho:** 655 bytes (muito pequeno)
-- **Arquivos:** 7 arquivos internos
-- **Nota:** Resultados podem variar com arquivos maiores
-
-### 🏆 GANHOS REAIS (Advanced Benchmarks)
-
-| Otimização | Ganho de Performance | Detalhes |
-|------------|---------------------|----------|
-| **🚀 Cache LRU** | **5.96x mais rápido** | 100 extrações: 0.19ms → 0.03ms (83.2% hit rate) |
-| **⚡ TextDecoder** | **2.52x mais rápido** | String parsing: 7433 ops/ms vs 2953 ops/ms |
-| **🔧 Buffer Pool** | **1.46x mais rápido** | Reduz alocações e GC pressure |
-| **🔄 Concurrent** | **1.27x mais rápido** | Promise.all vs sequential |
-| **💾 Memória** | **Cache limpo** | clearCache() libera 0.07 MB imediatamente |
-
-### Single-Pass Benchmark (Referência)
-
-| Operação | ANTES | DEPOIS | Nota |
-|----------|-------|--------|------|
-| **Load GRF** | 0.31ms | 0.55ms | Overhead do async em arquivo pequeno |
-| **Extract raw** | 0.26ms | 0.45ms | Compensado pelo cache e concorrência |
-| **Extract ALL (7)** | 0.96ms | 1.51ms | Use Promise.all() para 1.27x speedup |
-
----
-
-## 🔍 Análise dos Resultados
-
-### ⚠️ Performance reduzida em arquivo pequeno
-
-**Explicação:**
-1. **Overhead do async I/O:** Para arquivos de 655 bytes, o overhead do `promisify()` + `await` é maior que o benefício do non-blocking I/O
-2. **Não há I/O concorrente:** Benchmarks sequenciais não aproveitam o async
-3. **TextDecoder:** Overhead para strings muito curtas
-
-### ✅ Quando as otimizações brilham:
-
-1. **Arquivos GRF grandes (>10MB)**
-   - Async I/O permite processamento paralelo
-   - Buffer pool reduz significativamente GC pauses
-   - TextDecoder mostra ganhos reais
-
-2. **Cenários de servidor (múltiplas requisições)**
-   - Event loop livre permite atender outras requests durante I/O
-   - Cache LRU evita reprocessamento de arquivos populares
-
-3. **Extração em lote**
-   - Múltiplos `getFile()` podem rodar concorrentemente
-   - Cache reutiliza resultados
-
----
-
-## 🚀 Recomendações de Uso
-
-### Para Máxima Performance em Arquivos Pequenos (<1MB)
-```typescript
-// Desabilite buffer pool para arquivos pequenos
-const grf = new GrfNode(fd, { useBufferPool: false });
-```
-
-### Para Servidores e Arquivos Grandes
-```typescript
-// Configuração padrão (otimizada)
-const grf = new GrfNode(fd); // useBufferPool: true por padrão
-
-// Extração paralela
-const files = await Promise.all([
-  grf.getFile('file1.txt'),
-  grf.getFile('file2.txt'),
-  grf.getFile('file3.txt')
-]);
-
-// Cache é reutilizado automaticamente
-const cached = await grf.getFile('file1.txt'); // Instant!
-```
-
-### Gerenciamento de Memória
-```typescript
-// Limpar cache quando necessário
-grf.clearCache();
-
-// Estatísticas do buffer pool
-import { bufferPool } from '@chicowall/grf-loader';
-console.log(bufferPool.stats());
-```
-
----
-
-## 📊 Próximos Passos para Testes
-
-### Benchmarks Adicionais Necessários
-
-1. **Arquivos GRF reais (10MB - 500MB)**
-   - Ragnarok Online data.grf (~500MB)
-   - Medir ganhos reais de async I/O
-
-2. **Teste de Concorrência**
-   - Múltiplos `getFile()` paralelos
-   - Simular carga de servidor
-
-3. **Teste de Cache**
-   - Hit rate com workloads realistas
-   - Memória consumida vs ganho de performance
-
-4. **Teste de GC Pressure**
-   - Com/sem buffer pool
-   - Medir pauses do GC
-
-### Script de Benchmark Sugerido
 ```bash
-# Baixar GRF real do Ragnarok Online
-curl -O https://example.com/data.grf
-
-# Executar benchmark completo
-npm run benchmark:large
-npm run benchmark:concurrent
-npm run benchmark:cache
+yarn build
+yarn bench path/to/data.grf node_modules/@chicowall/grf-loader/dist/index.cjs
 ```
 
----
+| | 1.1.3 | 1.2.0 |
+|---|---:|---:|
+| `load()` | 1,558 ms | **426 ms** |
+| heap held by the loaded archive | 218 MiB | **77 MiB** |
+| `getFile()` x 2,000 files spread over the archive (151 MiB uncompressed) | 1,629 ms | **598 ms** |
+| `getFile()` of the largest file (20 MiB) | 211 ms | **53 ms** |
+| …and the longest the event loop was blocked while it ran | 209 ms | **12 ms** |
+| first `getStats()` (builds the lookup indexes) | 0 ms | 415 ms |
 
-## 📝 Conclusão
+Reading all 205,404 files with both builds gives the same bytes for 205,399 of them (13.47 GiB). The
+five that differ are stored entries whose DES alignment padding 1.1.3 returned as part of the file.
 
-As otimizações implementadas são **arquiteturalmente corretas** e trarão **ganhos significativos** em:
-- ✅ Arquivos GRF grandes (>10MB)
-- ✅ Ambientes de servidor (Node.js)
-- ✅ Acesso repetido aos mesmos arquivos
-- ✅ Operações I/O concorrentes
+## Where it comes from
 
-Para arquivos **muito pequenos** (<1MB) em operações **sequenciais**, o overhead do async pode ser negativo. Nesses casos, considere:
-- Usar `useBufferPool: false`
-- Processar em lote com `Promise.all()`
-- Medir com arquivos reais da aplicação
+**`load()`** — the file table is decompressed, then a name and 17 bytes are read per entry.
 
----
+- Names were decoded one iconv-lite call at a time. They are now copied, NUL-separated, into one buffer
+  and decoded in a single call, then split on NUL: no byte of a CP949 or UTF-8 character is 0.
+- `rawNameBytes` are views into that buffer instead of one copy per name, which is most of the drop in
+  memory.
+- The normalized-path and extension indexes are built the first time something needs them
+  (`resolvePath` with a name that is not exact, `find`, `getFilesByExtension`, `listExtensions`,
+  `getStats`). That is the 415 ms above, and a caller that asks for exact names never pays it.
 
-## 🔧 APIs Adicionadas
+**`getFile()`** — `GrfNode` inflates with Node's own zlib instead of pako. Entries up to 64 KiB of
+output inflate on the main thread, where that costs less than a trip to the thread pool; larger ones
+inflate in the pool, which is why reading a 20 MiB map no longer blocks the event loop for a fifth of a
+second. zlib gets one output chunk of the size the entry says it has, instead of its default 16 KiB
+chunks, each of which costs a copy and, in the pool, a round trip.
 
-### GrfNode Constructor
-```typescript
-new GrfNode(fd: number, options?: {
-  useBufferPool?: boolean // Default: true
-})
-```
+`GrfBrowser` still uses pako: browsers have no zlib.
 
-### GrfBase Methods
-```typescript
-grf.clearCache(): void
-```
+**Memory** — `getFile` keeps decoded files in a cache that had no byte limit, only a count of 50, so 50
+maps of 20 MiB could sit in it. `cacheMaxBytes` (64 MiB) now bounds it and `cacheMaxFiles: 0` turns it
+off for a caller that caches on its own.
 
-### Buffer Pool (Exported)
-```typescript
-import { bufferPool } from '@chicowall/grf-loader';
+## What was measured before
 
-bufferPool.stats()  // Ver estatísticas
-bufferPool.clear()  // Limpar pool global
-```
+Earlier versions of this file reported gains measured on `data/with-files.grf`: 655 bytes, 7 entries.
+At that size the numbers say more about the overhead of a promise than about the loader -- among them a
+"1.46x" for a buffer pool that, on a real archive, handed out buffers nothing ever gave back.

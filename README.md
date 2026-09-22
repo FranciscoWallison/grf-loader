@@ -7,7 +7,7 @@
 
 ## Features
 
-- ✅ GRF version 0x200 support
+- ✅ GRF version 0x200 and 0x300 support
 - ✅ Works in both Node.js and browser environments
 - ✅ DES decryption support
 - ✅ **Korean filename encoding (CP949/EUC-KR)** with auto-detection
@@ -65,9 +65,29 @@ const grf = new GrfNode(fd, {
   maxFileUncompressedBytes: 256 * 1024 * 1024,
 
   // Maximum entries allowed (default: 500,000)
-  maxEntries: 500000
+  maxEntries: 500000,
+
+  // Decoded files kept in memory by getFile (default: 50; 0 turns the cache off)
+  cacheMaxFiles: 50,
+
+  // Bytes of decoded files kept in memory (default: 64 MiB; a larger file is never cached)
+  cacheMaxBytes: 64 * 1024 * 1024
 });
 ```
+
+A server with a cache of its own should pass `cacheMaxFiles: 0` and keep the memory in one place.
+
+## Builds
+
+| How you load it | File | What it has |
+|---|---|---|
+| `import` / `require` in Node | `dist/index.js`, `dist/index.cjs` | `GrfNode` and `GrfBrowser`; Korean names through iconv-lite |
+| A bundler for the browser (the `browser` export condition) | `dist/browser.js` | `GrfBrowser` and the types; no Node modules |
+| A `<script>` tag | `dist/index.global.js` (`window.GrfLoader`) | the same as above |
+
+In the browser, names are decoded with `TextDecoder('euc-kr')`, which the Encoding Standard defines as
+windows-949 -- CP949 extension syllables included. The mojibake helpers need iconv-lite and return their
+input unchanged there; `hasIconvLite()` says which of the two you are in.
 
 ## API Reference
 
@@ -196,7 +216,7 @@ try {
         console.log('Not a GRF file');
         break;
       case 'UNSUPPORTED_VERSION':
-        console.log('Only version 0x200 supported');
+        console.log('Only versions 0x200 and 0x300 are supported');
         break;
       case 'CORRUPT_TABLE':
         console.log('File table is corrupted');
@@ -214,7 +234,7 @@ try {
 | Code | Description |
 |------|-------------|
 | `INVALID_MAGIC` | File is not a GRF (invalid signature) |
-| `UNSUPPORTED_VERSION` | GRF version not 0x200 |
+| `UNSUPPORTED_VERSION` | GRF version is neither 0x200 nor 0x300 |
 | `NOT_LOADED` | GRF not loaded yet |
 | `FILE_NOT_FOUND` | Requested file not in archive |
 | `AMBIGUOUS_PATH` | Multiple files match (collision) |
@@ -287,9 +307,30 @@ await grf.getFile('data/sprite/monster.spr');
 
 ## Browser Limitations
 
-- **iconv-lite** is not available in browsers
-- CP949 extended characters may show as C1 control characters
-- Use `hasIconvLite()` to check availability
+- **iconv-lite** is not available in browsers, so `fixMojibake`, `toMojibake` and `normalizeFilename`
+  return what they are given; `hasIconvLite()` returns false
+- Filenames are decoded with `TextDecoder`, whose EUC-KR is windows-949 in browsers but plain EUC-KR in
+  Node: reading an archive with `GrfBrowser` under Node turns CP949 extension syllables into C1 control
+  characters
+
+## Performance
+
+```bash
+yarn build
+yarn bench path/to/data.grf                                 # this build
+yarn bench path/to/data.grf other/dist/index.cjs            # and another one, side by side
+```
+
+See [PERFORMANCE.md](PERFORMANCE.md) for what the numbers look like on a 3.27 GiB archive.
+
+## Deprecated
+
+Removed in the next major version:
+
+| What | Why |
+|---|---|
+| `bufferPool`, `GrfNodeOptions.useBufferPool` | reads allocate their own buffer; the option is ignored |
+| `getStreamReader()` | the loader reads with `DataView`; jdataview is only still there for this method |
 
 ## License
 
