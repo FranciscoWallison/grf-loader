@@ -109,19 +109,47 @@ jobs:
       - name: Check dist contents
         run: ls -la dist/
 
-      - name: Version & tag
+      # Not a gate: npm whoami is only here to name the account in the log. A granular token may be
+      # allowed to publish and still not answer it, so a failure is a warning, not a stop.
+      - name: Who does npm think we are
+        run: |
+          if user=$(npm whoami 2>/dev/null); then
+            echo "npm user: $user"
+          else
+            echo "::warning::npm whoami did not answer. If the publish fails with a 404, the NPM_TOKEN secret is the first thing to look at."
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Is there a version to release?
+        id: release
         run: |
           VERSION=$(node -p "require('./package.json').version")
           if npm view "@chicowall/grf-loader@$VERSION" version >/dev/null 2>&1; then
-            # Nothing set a version for this release: take the next patch.
-            npm version patch -m "chore(release): %s [skip ci]"
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$VERSION is already on npm, so there is nothing to publish. Set the version in package.json to release."
           else
-            # package.json already names a version that is not on npm: publish that one.
-            git tag -a "v$VERSION" -m "v$VERSION" || true
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "Releasing $VERSION"
           fi
-          git push --follow-tags
 
       - name: Publish to npm
+        id: publish
+        if: steps.release.outputs.publish == 'true'
         run: npm publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Why the publish failed
+        if: failure() && steps.publish.outcome == 'failure'
+        run: |
+          echo "::error::npm refused the publish. A 404 on the PUT means the NPM_TOKEN secret is missing, expired or cannot write to @chicowall/grf-loader -- create a token at npmjs.com (Access Tokens) and set the secret. Nothing was tagged, so a re-run of this job publishes the same version."
+
+      # Only once the version is on npm, so a failed publish leaves no tag behind -- v1.1.1 and v1.1.2 are
+      # tags of releases that never made it to the registry.
+      - name: Tag the release
+        if: steps.publish.outcome == 'success'
+        run: |
+          git tag -a "v${{ steps.release.outputs.version }}" -m "v${{ steps.release.outputs.version }}" || true
+          git push --follow-tags
