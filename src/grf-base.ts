@@ -1,4 +1,3 @@
-import pako from 'pako';
 import jDataview from 'jdataview';
 import {decodeFull, decodeHeader} from './des';
 import {
@@ -202,6 +201,15 @@ export abstract class GrfBase<T> {
   ): Promise<Uint8Array>;
 
   /**
+   * Inflate a zlib stream whose output is `realSize` bytes. Node uses its native zlib, the browser pako.
+   * Throws (or rejects) on corrupt data.
+   */
+  protected abstract inflate(
+    data: Uint8Array,
+    realSize: number
+  ): Uint8Array | Promise<Uint8Array>;
+
+  /**
    * @deprecated Not used by the loader any more; it reads with DataView. Kept for compatibility and
    * removed in the next major version.
    */
@@ -296,7 +304,7 @@ export abstract class GrfBase<T> {
 
     let data: Uint8Array;
     try {
-      data = pako.inflate(compressed);
+      data = await this.inflate(compressed, realSize);
     } catch (error) {
       throw new GrfError('CORRUPT_TABLE', 'Failed to decompress file table', {
         compressedSize,
@@ -466,7 +474,7 @@ export abstract class GrfBase<T> {
     this._stats.fileCount = this.files.size;
   }
 
-  private decodeEntry(data: Uint8Array, entry: TFileEntry): Uint8Array {
+  private async decodeEntry(data: Uint8Array, entry: TFileEntry): Promise<Uint8Array> {
     // Decode the file
     if (entry.type & FILELIST_TYPE_ENCRYPT_MIXED) {
       decodeFull(data, entry.lengthAligned, entry.compressedSize);
@@ -480,8 +488,8 @@ export abstract class GrfBase<T> {
       return data.subarray(0, entry.realSize);
     }
 
-    // Uncompress
-    return pako.inflate(data);
+    // Uncompress the zlib stream, without the alignment padding after it.
+    return this.inflate(data.subarray(0, entry.compressedSize), entry.realSize);
   }
 
   private addToCache(filename: string, data: Uint8Array): void {
@@ -558,7 +566,7 @@ export abstract class GrfBase<T> {
     );
 
     try {
-      const result = this.decodeEntry(data, entry);
+      const result = await this.decodeEntry(data, entry);
 
       // Add to cache
       this.addToCache(path, result);

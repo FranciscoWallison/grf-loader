@@ -1,6 +1,7 @@
 // src/grf-node.ts
 import { fstatSync, read as readCallback } from 'fs';
 import { promisify } from 'util';
+import { inflate as inflateCallback, inflateSync } from 'zlib';
 import iconv from 'iconv-lite';
 import { GrfBase, GrfOptions } from './grf-base';
 import { bufferPool } from './buffer-pool';
@@ -14,6 +15,14 @@ setKoreanCodec({
 });
 
 const readAsync = promisify(readCallback);
+const inflateAsync = promisify(inflateCallback);
+
+/**
+ * Up to this output size an entry inflates on the main thread: a trip to the thread pool costs more than
+ * the work. Larger ones inflate in the pool, off the event loop -- the 20 MiB map of the bRO data.grf
+ * held it for ~180 ms with pako.
+ */
+const SYNC_INFLATE_MAX_BYTES = 64 * 1024;
 
 /** Options for GrfNode */
 export interface GrfNodeOptions extends GrfOptions {
@@ -64,5 +73,17 @@ export class GrfNode extends GrfBase<number> {
     }
 
     return buffer;
+  }
+
+  /** Node's native zlib: 3-6x faster than pako on the bRO data.grf (benchmark/real-grf-profile.mjs). */
+  protected async inflate(data: Uint8Array, realSize: number): Promise<Uint8Array> {
+    // One output chunk of the known size. zlib's default 16 KiB chunks cost a copy each and, in the pool,
+    // a round trip each. The +1 keeps a full chunk from making zlib allocate another to look for more.
+    const options = { chunkSize: Math.max(realSize + 1, 64) };
+    const out = realSize <= SYNC_INFLATE_MAX_BYTES
+      ? inflateSync(data, options)
+      : await inflateAsync(data, options);
+    // A plain Uint8Array over the same memory, as pako returned: Buffer's slice() does not copy.
+    return new Uint8Array(out.buffer, out.byteOffset, out.byteLength);
   }
 }
