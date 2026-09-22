@@ -317,20 +317,24 @@ export abstract class GrfBase<T> {
 
     // If auto-detect, sample filenames and use improved detection algorithm
     if (this.options.filenameEncoding === 'auto') {
+      // Sample names that have non-ASCII bytes, wherever they are in the table. Only those tell the
+      // encodings apart, and taking the first 200 names of any kind failed on an archive that starts with
+      // ASCII names: no evidence, so 'utf-8', and every Korean name decoded to U+FFFD.
       const sampleBytes: Uint8Array[] = [];
       let samplePos = 0;
-      // Sample more files for better detection accuracy
-      const sampleCount = Math.min(200, this.fileCount);
+      const sampleCount = 200;
       // 0x200: 17-byte entries (4-byte offset), 0x300: 21-byte entries (8-byte offset)
       const entryDataSize = this.version === 0x300 ? 21 : 17;
 
-      for (let i = 0; i < sampleCount && samplePos < data.length; i++) {
+      for (let i = 0; i < this.fileCount && sampleBytes.length < sampleCount && samplePos < data.length; i++) {
         let endPos = samplePos;
-        while (data[endPos] !== 0 && endPos < data.length) endPos++;
+        let highByte = false;
+        while (data[endPos] !== 0 && endPos < data.length) {
+          if (data[endPos] > 0x7f) highByte = true;
+          endPos++;
+        }
 
-        // Only include samples with non-ASCII bytes for detection
-        const bytes = data.subarray(samplePos, endPos);
-        sampleBytes.push(bytes);
+        if (highByte) sampleBytes.push(data.subarray(samplePos, endPos));
 
         samplePos = endPos + 1 + entryDataSize;
       }
