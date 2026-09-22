@@ -9,6 +9,7 @@ export type {
   GrfStats
 } from './grf-base';
 export {GrfError, GRF_ERROR_CODES} from './grf-base';
+/** @deprecated The loader does not read through it any more; removed in the next major version. */
 export {bufferPool} from './buffer-pool';
 
 // Encoding utilities

@@ -36,6 +36,16 @@ export interface GrfOptions {
   maxFileUncompressedBytes?: number;
   /** Maximum total entries allowed (default: 500000) */
   maxEntries?: number;
+  /**
+   * How many decoded files getFile keeps in memory (default: 50). 0 turns the cache off, for a caller
+   * that caches on its own.
+   */
+  cacheMaxFiles?: number;
+  /**
+   * How many bytes of decoded files to keep in memory (default: 64 MiB). A file larger than this is
+   * never cached -- before, 50 maps of 20 MiB could sit in the cache.
+   */
+  cacheMaxBytes?: number;
 }
 
 /** Search/find options */
@@ -115,6 +125,8 @@ const FILE_TABLE_SIZE = Uint32Array.BYTES_PER_ELEMENT * 2;
 const DEFAULT_MAX_FILE_UNCOMPRESSED_BYTES = 256 * 1024 * 1024; // 256MB
 const DEFAULT_MAX_ENTRIES = 500000;
 const DEFAULT_AUTO_DETECT_THRESHOLD = 0.01; // 1%
+const DEFAULT_CACHE_MAX_FILES = 50;
+const DEFAULT_CACHE_MAX_BYTES = 64 * 1024 * 1024; // 64MB
 
 /** A character that shows a name decoded wrong: U+FFFD or a C1 control (what countBadChars counts). */
 const BAD_CHAR = /[\u0080-\u009f\ufffd]/;
@@ -181,8 +193,7 @@ export abstract class GrfBase<T> {
 
   private fileTableOffset = 0;
   private cache = new Map<string, Uint8Array>();
-  private cacheMaxSize = 50;
-  private cacheOrder: string[] = [];
+  private cacheBytes = 0;
 
   // Options
   protected options: Required<GrfOptions>;
@@ -201,7 +212,9 @@ export abstract class GrfBase<T> {
       filenameEncoding: options?.filenameEncoding ?? 'auto',
       autoDetectThreshold: options?.autoDetectThreshold ?? DEFAULT_AUTO_DETECT_THRESHOLD,
       maxFileUncompressedBytes: options?.maxFileUncompressedBytes ?? DEFAULT_MAX_FILE_UNCOMPRESSED_BYTES,
-      maxEntries: options?.maxEntries ?? DEFAULT_MAX_ENTRIES
+      maxEntries: options?.maxEntries ?? DEFAULT_MAX_ENTRIES,
+      cacheMaxFiles: options?.cacheMaxFiles ?? DEFAULT_CACHE_MAX_FILES,
+      cacheMaxBytes: options?.cacheMaxBytes ?? DEFAULT_CACHE_MAX_BYTES
     };
   }
 
@@ -537,36 +550,46 @@ export abstract class GrfBase<T> {
     return this.inflate(data.subarray(0, entry.compressedSize), entry.realSize);
   }
 
+  // A Map iterates in insertion order, so the least recently used entry is the first one: a lookup moves
+  // its entry to the end, and eviction takes from the front.
   private addToCache(filename: string, data: Uint8Array): void {
-    // Remove oldest if cache is full
-    if (this.cacheOrder.length >= this.cacheMaxSize) {
-      const oldest = this.cacheOrder.shift();
-      if (oldest) {
-        this.cache.delete(oldest);
-      }
+    const {cacheMaxFiles, cacheMaxBytes} = this.options;
+    if (cacheMaxFiles <= 0 || data.byteLength > cacheMaxBytes) {
+      return;
     }
 
-    // Add to cache
+    const previous = this.cache.get(filename);
+    if (previous) {
+      this.cache.delete(filename);
+      this.cacheBytes -= previous.byteLength;
+    }
+
+    while (
+      this.cache.size > 0 &&
+      (this.cache.size >= cacheMaxFiles || this.cacheBytes + data.byteLength > cacheMaxBytes)
+    ) {
+      const oldest = this.cache.keys().next().value as string;
+      this.cacheBytes -= this.cache.get(oldest)!.byteLength;
+      this.cache.delete(oldest);
+    }
+
     this.cache.set(filename, data);
-    this.cacheOrder.push(filename);
+    this.cacheBytes += data.byteLength;
   }
 
   private getFromCache(filename: string): Uint8Array | undefined {
     const cached = this.cache.get(filename);
     if (cached) {
-      // Move to end (most recently used)
-      const index = this.cacheOrder.indexOf(filename);
-      if (index > -1) {
-        this.cacheOrder.splice(index, 1);
-        this.cacheOrder.push(filename);
-      }
+      // Move to the end (most recently used)
+      this.cache.delete(filename);
+      this.cache.set(filename, cached);
     }
     return cached;
   }
 
   public clearCache(): void {
     this.cache.clear();
-    this.cacheOrder = [];
+    this.cacheBytes = 0;
   }
 
   public async getFile(

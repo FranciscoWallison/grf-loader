@@ -4,7 +4,6 @@ import { promisify } from 'util';
 import { inflate as inflateCallback, inflateSync } from 'zlib';
 import iconv from 'iconv-lite';
 import { GrfBase, GrfOptions } from './grf-base';
-import { bufferPool } from './buffer-pool';
 import { setKoreanCodec } from './decoder';
 
 // A static import, so both the CommonJS and the ES module builds load iconv-lite (see decoder.ts).
@@ -26,17 +25,15 @@ const SYNC_INFLATE_MAX_BYTES = 64 * 1024;
 
 /** Options for GrfNode */
 export interface GrfNodeOptions extends GrfOptions {
-  /** Use buffer pool for better performance (default: true) */
+  /**
+   * @deprecated Ignored. Reads always allocate their own buffer; see getStreamBuffer.
+   */
   useBufferPool?: boolean;
 }
 
 export class GrfNode extends GrfBase<number> {
-  private useBufferPool: boolean;
-
   constructor(fd: number, options?: GrfNodeOptions) {
     super(fd, options);
-
-    this.useBufferPool = options?.useBufferPool ?? true;
 
     // Na nossa API, apenas FDs para arquivos regulares são válidos.
     // fstatSync lança erro se o descritor não existir ou não for arquivo.
@@ -51,23 +48,22 @@ export class GrfNode extends GrfBase<number> {
     }
   }
 
+  /**
+   * Reads always allocate. The shared pool (still exported, deprecated) handed out buffers that nothing
+   * ever gave back, so after 80 reads every read allocated anyway -- and a buffer that did come back would
+   * be reused under the caller, because a stored entry is returned as a view into the buffer it was read
+   * into.
+   */
   public async getStreamBuffer(
     fd: number,
     offset: number,
     length: number
   ): Promise<Uint8Array> {
-    // Use buffer pool for better performance
-    const buffer = this.useBufferPool
-      ? bufferPool.acquire(length)
-      : Buffer.allocUnsafe(length);
+    const buffer = Buffer.allocUnsafe(length);
 
     const { bytesRead } = await readAsync(fd, buffer, 0, length, offset);
 
     if (bytesRead !== length) {
-      // Release buffer back to pool if read failed
-      if (this.useBufferPool) {
-        bufferPool.release(buffer);
-      }
       // ERRO TYPE: GRFNode: unexpected EOF
       throw new Error('Not a GRF file (invalid signature)');
     }
