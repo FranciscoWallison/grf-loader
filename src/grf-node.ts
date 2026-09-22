@@ -1,8 +1,17 @@
 // src/grf-node.ts
 import { fstatSync, read as readCallback } from 'fs';
 import { promisify } from 'util';
+import iconv from 'iconv-lite';
 import { GrfBase, GrfOptions } from './grf-base';
 import { bufferPool } from './buffer-pool';
+import { setKoreanCodec } from './decoder';
+
+// A static import, so both the CommonJS and the ES module builds load iconv-lite (see decoder.ts).
+// Buffer.from over the same memory: iconv-lite wants a Buffer, and a copy per name would be waste.
+setKoreanCodec({
+  decode: (bytes, encoding) => iconv.decode(Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength), encoding),
+  encode: (text, encoding) => iconv.encode(text, encoding),
+});
 
 const readAsync = promisify(readCallback);
 

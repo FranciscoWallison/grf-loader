@@ -12,20 +12,22 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "browser": "./dist/browser.js",
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     }
   },
   "sideEffects": false,
   "files": [
-    "dist/index.*"
+    "dist/index.*",
+    "dist/browser.*"
   ],
   "scripts": {
     "test:node": "jest",
     "test:browser": "cypress run",
     "test": "yarn test:node --detectOpenHandles && yarn test:browser",
     "lint": "tsc -p tsconfig.json --noEmit",
-    "build": "tsup src/index.ts --dts --format cjs,esm,iife --globalName GrfLoader --sourcemap --minify --clean",
+    "build": "tsup",
     "all_config": "yarn lint && yarn test:node && yarn test:browser && yarn build",
     "validate:grf": "node tools/test-grf-read.mjs",
     "validate:all": "node tools/validate-all-grfs.mjs"

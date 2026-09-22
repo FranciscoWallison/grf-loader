@@ -201,6 +201,10 @@ export abstract class GrfBase<T> {
     length: number
   ): Promise<Uint8Array>;
 
+  /**
+   * @deprecated Not used by the loader any more; it reads with DataView. Kept for compatibility and
+   * removed in the next major version.
+   */
   public async getStreamReader(
     offset: number,
     length: number
@@ -218,50 +222,50 @@ export abstract class GrfBase<T> {
     }
   }
 
-  private async parseHeader(): Promise<void> {
-    const reader = await this.getStreamReader(0, HEADER_SIZE);
+  /** Little-endian view over `length` bytes at `offset`. */
+  private async readView(offset: number, length: number): Promise<DataView> {
+    const bytes = await this.getStreamBuffer(this.fd, offset, length);
+    return new DataView(bytes.buffer, bytes.byteOffset, length);
+  }
 
-    const signature = reader.getString(15);
+  private async parseHeader(): Promise<void> {
+    const view = await this.readView(0, HEADER_SIZE);
+
+    let signature = '';
+    for (let i = 0; i < 15; i++) signature += String.fromCharCode(view.getUint8(i));
     if (signature !== HEADER_SIGNATURE) {
       throw new GrfError('INVALID_MAGIC', 'Not a GRF file (invalid signature)', { signature });
     }
 
-    reader.skip(15);
-    // Now at offset 30. Version is always at offset 42 for both 0x200 and 0x300.
-    // Read version first to determine how to parse the rest of the header.
-    // Save position, peek version, then parse based on version.
-    const afterKey = reader.tell();
-    reader.seek(42);
-    this.version = reader.getUint32();
+    // A 15-byte key follows the signature, so the fields start at offset 30. The version is at offset 42
+    // in both layouts and decides how to read the rest.
+    this.version = view.getUint32(42, true);
 
     if (this.version !== 0x200 && this.version !== 0x300) {
       throw new GrfError('UNSUPPORTED_VERSION', `Unsupported version "0x${this.version.toString(16)}"`, { version: this.version });
     }
 
-    reader.seek(afterKey);
-
     if (this.version === 0x200) {
       // 0x200: [table_offset:u32][seeds:u32][filecount:u32][version:u32]
-      this.fileTableOffset = reader.getUint32() + HEADER_SIZE;
-      const reservedFiles = reader.getUint32();
-      this.fileCount = reader.getUint32() - reservedFiles - 7;
+      this.fileTableOffset = view.getUint32(30, true) + HEADER_SIZE;
+      const reservedFiles = view.getUint32(34, true);
+      this.fileCount = view.getUint32(38, true) - reservedFiles - 7;
     } else {
       // 0x300: [table_offset:u64][filecount:u32][version:u32]
-      const low = reader.getUint32();
-      const high = reader.getUint32();
+      const low = view.getUint32(30, true);
+      const high = view.getUint32(34, true);
 
       // GRFEditor heuristic: bytes 35-37 (upper 3 bytes of high word) must be zero.
       // Protects against mis-tagged GRFs where version says 0x300 but layout is 0x200.
       if ((high >>> 8) !== 0) {
         // Fall back to 0x200 parsing
         this.version = 0x200;
-        reader.seek(afterKey);
-        this.fileTableOffset = reader.getUint32() + HEADER_SIZE;
-        const reservedFiles = reader.getUint32();
-        this.fileCount = reader.getUint32() - reservedFiles - 7;
+        this.fileTableOffset = low + HEADER_SIZE;
+        const reservedFiles = high;
+        this.fileCount = view.getUint32(38, true) - reservedFiles - 7;
       } else {
         this.fileTableOffset = high * 0x100000000 + low + HEADER_SIZE;
-        this.fileCount = reader.getUint32();
+        this.fileCount = view.getUint32(38, true);
       }
     }
 
@@ -279,12 +283,9 @@ export abstract class GrfBase<T> {
     const tableSkip = this.version === 0x300 ? 4 : 0;
 
     // Read table list, stored information
-    const reader = await this.getStreamReader(
-      this.fileTableOffset + tableSkip,
-      FILE_TABLE_SIZE
-    );
-    const compressedSize = reader.getUint32();
-    const realSize = reader.getUint32();
+    const view = await this.readView(this.fileTableOffset + tableSkip, FILE_TABLE_SIZE);
+    const compressedSize = view.getUint32(0, true);
+    const realSize = view.getUint32(4, true);
 
     // Load the chunk and uncompress it
     const compressed = await this.getStreamBuffer(
