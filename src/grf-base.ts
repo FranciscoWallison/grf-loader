@@ -469,9 +469,10 @@ export abstract class GrfBase<T> {
       decodeHeader(data, entry.lengthAligned);
     }
 
-    // No compression
+    // No compression. The entry is read up to lengthAligned, which DES alignment can put past the end of
+    // the data: return realSize bytes, not the padding after them.
     if (entry.realSize === entry.compressedSize) {
-      return data;
+      return data.subarray(0, entry.realSize);
     }
 
     // Uncompress
