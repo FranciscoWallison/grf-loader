@@ -30,7 +30,8 @@
     "build": "tsup",
     "all_config": "yarn lint && yarn test:node && yarn test:browser && yarn build",
     "validate:grf": "node tools/test-grf-read.mjs",
-    "validate:all": "node tools/validate-all-grfs.mjs"
+    "validate:all": "node tools/validate-all-grfs.mjs",
+    "bench": "node benchmark/real-grf-profile.mjs"
   },
   "author": "Vincent Thibault <vthibault.mobile@gmail.com>",
   "license": "MIT",
