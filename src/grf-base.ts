@@ -116,6 +116,9 @@ const DEFAULT_MAX_FILE_UNCOMPRESSED_BYTES = 256 * 1024 * 1024; // 256MB
 const DEFAULT_MAX_ENTRIES = 500000;
 const DEFAULT_AUTO_DETECT_THRESHOLD = 0.01; // 1%
 
+/** A character that shows a name decoded wrong: U+FFFD or a C1 control (what countBadChars counts). */
+const BAD_CHAR = /[\u0080-\u009f\ufffd]/;
+
 // ============================================================================
 // Helper Functions
 // ============================================================================
@@ -167,6 +170,14 @@ export abstract class GrfBase<T> {
 
   /** Map of extension -> array of exact filenames (for fast extension lookup) */
   private extensionIndex = new Map<string, string[]>();
+
+  /**
+   * File names in table order, duplicates included. The two indexes above are built from it on first use
+   * (ensureIndexes): a server that asks for exact names never needs them, and on the bRO data.grf they
+   * took 0.3 s of load().
+   */
+  private fileNames: string[] = [];
+  private indexesBuilt = false;
 
   private fileTableOffset = 0;
   private cache = new Map<string, Uint8Array>();
@@ -366,6 +377,14 @@ export abstract class GrfBase<T> {
     // 0x200: 17-byte entries (4-byte offset), 0x300: 21-byte entries (8-byte offset)
     const entryDataSize = this.version === 0x300 ? 21 : 17;
 
+    // First pass: read the entries and copy their names, each ending in its NUL, into one buffer. The
+    // names are then decoded in a single call instead of one per name (a third of load() on the bRO
+    // data.grf), and rawNameBytes are views into that buffer rather than 205,404 separate copies.
+    const entries: TFileEntry[] = [];
+    const nameEnds: number[] = [];
+    let names = new Uint8Array(data.length);
+    let namesLength = 0;
+
     for (let i = 0, p = 0; i < this.fileCount; ++i) {
       // Validate position
       if (p >= data.length) {
@@ -377,20 +396,13 @@ export abstract class GrfBase<T> {
       }
 
       // Find null terminator
-      let endPos = p;
-      while (data[endPos] !== 0 && endPos < data.length) {
-        endPos++;
-      }
+      let endPos = data.indexOf(0, p);
+      if (endPos === -1) endPos = data.length;
 
-      // Store raw bytes and decode filename using the detected encoding
-      // Uses iconv-lite for Korean encodings in Node.js for proper CP949 support
-      const rawBytes = data.slice(p, endPos); // Copy for storage
-      const filename = decodeFilenameBytes(rawBytes, detectedEncoding);
-
-      // Count bad names (including C1 control chars that indicate wrong decode)
-      if (countBadChars(filename) > 0) {
-        this._stats.badNameCount++;
-      }
+      names.set(data.subarray(p, endPos), namesLength);
+      namesLength += endPos - p;
+      nameEnds.push(namesLength);
+      names[namesLength++] = 0;
 
       p = endPos + 1;
 
@@ -425,14 +437,35 @@ export abstract class GrfBase<T> {
         offset = (data[p++] | (data[p++] << 8) | (data[p++] << 16) | (data[p++] << 24)) >>> 0;
       }
 
-      const entry: TFileEntry = {
-        compressedSize,
-        lengthAligned,
-        realSize,
-        type,
-        offset,
-        rawNameBytes: rawBytes
-      };
+      entries.push({compressedSize, lengthAligned, realSize, type, offset});
+    }
+
+    // Keep only the bytes used; the table buffer can go.
+    names = names.slice(0, namesLength);
+    const nameAt = (i: number) => names.subarray(i === 0 ? 0 : nameEnds[i - 1] + 1, nameEnds[i]);
+
+    // No byte of a CP949 or UTF-8 character is 0, so the decoded text splits back into the same names.
+    const text = decodeFilenameBytes(names, detectedEncoding);
+    let filenames = text.split('\0');
+    filenames.pop(); // the empty string after the last NUL
+    const split = filenames.length === entries.length;
+    if (!split) {
+      // Only a decoder that took a NUL into a character gets here: decode the names one by one.
+      filenames = entries.map((_, i) => decodeFilenameBytes(nameAt(i), detectedEncoding));
+    }
+
+    // Count bad names (including C1 control chars that indicate wrong decode). One test over all the text
+    // settles the usual case, where there are none.
+    if (!split || BAD_CHAR.test(text)) {
+      for (const filename of filenames) {
+        if (BAD_CHAR.test(filename)) this._stats.badNameCount++;
+      }
+    }
+
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
+      const filename = filenames[i];
+      entry.rawNameBytes = nameAt(i);
 
       // Validate sizes against limits
       if (entry.realSize > this.options.maxFileUncompressedBytes) {
@@ -444,34 +477,46 @@ export abstract class GrfBase<T> {
       if (entry.type & FILELIST_TYPE_FILE) {
         // Add to main files map
         this.files.set(filename, entry);
-
-        // Add to normalized index (supports collisions)
-        const normalizedKey = normalizePath(filename);
-        const existingNorm = this.normalizedIndex.get(normalizedKey);
-        if (existingNorm) {
-          existingNorm.push(filename);
-          this._stats.collisionCount++;
-        } else {
-          this.normalizedIndex.set(normalizedKey, [filename]);
-        }
-
-        // Add to extension index
-        const ext = getExtension(filename);
-        if (ext) {
-          const existingExt = this.extensionIndex.get(ext);
-          if (existingExt) {
-            existingExt.push(filename);
-          } else {
-            this.extensionIndex.set(ext, [filename]);
-          }
-
-          // Update extension stats
-          this._stats.extensionStats.set(ext, (this._stats.extensionStats.get(ext) || 0) + 1);
-        }
+        this.fileNames.push(filename);
       }
     }
 
     this._stats.fileCount = this.files.size;
+  }
+
+  /**
+   * Build the normalized-path and extension indexes, and the statistics that come with them, the first
+   * time something needs them.
+   */
+  private ensureIndexes(): void {
+    if (this.indexesBuilt || !this.loaded) return;
+    this.indexesBuilt = true;
+
+    for (const filename of this.fileNames) {
+      // Add to normalized index (supports collisions)
+      const normalizedKey = normalizePath(filename);
+      const existingNorm = this.normalizedIndex.get(normalizedKey);
+      if (existingNorm) {
+        existingNorm.push(filename);
+        this._stats.collisionCount++;
+      } else {
+        this.normalizedIndex.set(normalizedKey, [filename]);
+      }
+
+      // Add to extension index
+      const ext = getExtension(filename);
+      if (ext) {
+        const existingExt = this.extensionIndex.get(ext);
+        if (existingExt) {
+          existingExt.push(filename);
+        } else {
+          this.extensionIndex.set(ext, [filename]);
+        }
+
+        // Update extension stats
+        this._stats.extensionStats.set(ext, (this._stats.extensionStats.get(ext) || 0) + 1);
+      }
+    }
   }
 
   private async decodeEntry(data: Uint8Array, entry: TFileEntry): Promise<Uint8Array> {
@@ -595,6 +640,7 @@ export abstract class GrfBase<T> {
 
     // Try normalized lookup
     const normalizedQuery = normalizePath(query);
+    this.ensureIndexes();
     const candidates = this.normalizedIndex.get(normalizedQuery);
 
     if (!candidates || candidates.length === 0) {
@@ -642,6 +688,7 @@ export abstract class GrfBase<T> {
     // If searching by extension only, use the extension index (fast path)
     if (ext && !contains && !endsWith && !regex) {
       const extLower = ext.toLowerCase().replace(/^\./, ''); // Remove leading dot if present
+      this.ensureIndexes();
       results = this.extensionIndex.get(extLower) || [];
     } else {
       // Full search
@@ -689,6 +736,7 @@ export abstract class GrfBase<T> {
    */
   public getFilesByExtension(ext: string): string[] {
     const extLower = ext.toLowerCase().replace(/^\./, '');
+    this.ensureIndexes();
     return this.extensionIndex.get(extLower) || [];
   }
 
@@ -696,6 +744,7 @@ export abstract class GrfBase<T> {
    * List all unique extensions in the GRF.
    */
   public listExtensions(): string[] {
+    this.ensureIndexes();
     return Array.from(this.extensionIndex.keys()).sort();
   }
 
@@ -714,6 +763,7 @@ export abstract class GrfBase<T> {
    * Get GRF statistics.
    */
   public getStats(): GrfStats {
+    this.ensureIndexes();
     return { ...this._stats, extensionStats: new Map(this._stats.extensionStats) };
   }
 
@@ -737,6 +787,8 @@ export abstract class GrfBase<T> {
     this.files.clear();
     this.normalizedIndex.clear();
     this.extensionIndex.clear();
+    this.fileNames = [];
+    this.indexesBuilt = false;
     this.clearCache();
     this.loaded = false;
     await this.load();

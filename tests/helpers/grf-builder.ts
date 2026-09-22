@@ -17,8 +17,8 @@ import {deflateSync} from 'zlib';
 import iconv from 'iconv-lite';
 
 export interface BuilderEntry {
-  /** Stored as CP949 bytes. */
-  name: string;
+  /** Stored as CP949 bytes; a Buffer is stored as is, for names no encoder would produce. */
+  name: string | Buffer;
   content: Buffer | string;
   /** Store without compression (realSize === compressedSize). */
   stored?: boolean;
@@ -49,7 +49,8 @@ export function buildGrf(entries: BuilderEntry[]): Buffer {
     meta.writeUInt8(0x01, 12); // type: file
     meta.writeUInt32LE(cursor, 13); // offset
 
-    table.push(iconv.encode(entry.name, 'cp949'), Buffer.from([0]), meta);
+    const name = Buffer.isBuffer(entry.name) ? entry.name : iconv.encode(entry.name, 'cp949');
+    table.push(name, Buffer.from([0]), meta);
     bodies.push(body, padding);
     cursor += body.length + padding.length;
   }
